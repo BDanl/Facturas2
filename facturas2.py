@@ -108,9 +108,12 @@ class MainWindow(QMainWindow):
         
         # Layout principal
         main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setSpacing(10)
         
         # Barra de herramientas
         toolbar = QHBoxLayout()
+        toolbar.setContentsMargins(0, 0, 0, 10)
         
         # Título
         title = QLabel("Sistema de Gestión de Facturas")
@@ -149,13 +152,15 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.btn_tema)
         
         # Agregar barra de herramientas al layout principal
+        main_layout.addLayout(toolbar)
+        
         # Inicializar tema (por defecto: modo claro)
         self.tema_oscuro = False
         self.cargar_preferencia_tema()
         
         # Configurar pestañas
         self.tabs = QTabWidget()
-        self.setCentralWidget(self.tabs)
+        main_layout.addWidget(self.tabs)
         
         # Pestaña de registro
         self.tab_registro = QWidget()
