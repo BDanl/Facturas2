@@ -10,6 +10,10 @@ from decimal import Decimal, ROUND_HALF_UP
 import webbrowser
 import configparser
 from pathlib import Path
+import openpyxl
+from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side, numbers
+from openpyxl.worksheet.table import Table, TableStyleInfo
 
 # Importaciones de PyQt6
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
@@ -1653,25 +1657,24 @@ class MainWindow(QMainWindow):
         if not file_path.lower().endswith('.xlsx'):
             file_path += '.xlsx'
             
-        # Guardar el directorio para futuras exportaciones
-        config['APP']['last_export_dir'] = str(Path(file_path).parent)
-        save_config(config)
-        
         try:
-            # Crear un nuevo libro de trabajo
+            # Crear un nuevo libro de Excel
             wb = Workbook()
             
-            # Estilos para el libro
+            # Eliminar la hoja por defecto si no tiene datos
+            if 'Sheet' in wb.sheetnames:
+                wb.remove(wb['Sheet'])
+            
+            # Estilos
             header_font = Font(bold=True, color="FFFFFF")
             header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
             money_format = '#,##0.00" COP"'
             
-            # 1. Hoja de Facturas Detalladas
-            ws_detalle = wb.active
-            ws_detalle.title = "Facturas Detalladas"
+            # 1. Hoja de Detalle (todas las facturas)
+            ws_detalle = wb.create_sheet("Todas las Facturas")
             
             # Encabezados
-            headers = ["Fecha", "Tipo de Gasto", "Descripción", "Valor (COP)"]
+            headers = ["Fecha", "Tipo", "Descripción", "Valor (COP)"]
             for col_num, header in enumerate(headers, 1):
                 cell = ws_detalle.cell(row=1, column=col_num, value=header)
                 cell.font = header_font
@@ -1687,38 +1690,191 @@ class MainWindow(QMainWindow):
                 cell_valor = ws_detalle.cell(row=row_num, column=4, value=float(factura['valor']))
                 cell_valor.number_format = money_format
             
-            # Crear tabla para las facturas detalladas
-            table = Table(displayName="TablaFacturas", ref=f"A1:D{len(self.facturas) + 1}")
-            
-            # Añadir estilo a la tabla
+            # Crear tabla
+            table = Table(displayName="TablaDetalle", ref=f"A1:D{len(self.facturas) + 1}")
             style = TableStyleInfo(name="TableStyleMedium9", showFirstColumn=False,
                                  showLastColumn=False, showRowStripes=True, showColumnStripes=False)
             table.tableStyleInfo = style
-            
-            # Añadir la tabla a la hoja
             ws_detalle.add_table(table)
             
-            # Ajustar automáticamente el ancho de las columnas
+            # Ajustar ancho de columnas
             for column in ws_detalle.columns:
                 max_length = 0
                 column_letter = column[0].column_letter
                 for cell in column:
                     try:
-                        # Considerar el ancho del encabezado también
-                        value_length = len(str(cell.value).encode('utf-8'))  # Contar bytes para caracteres especiales
+                        value_length = len(str(cell.value).encode('utf-8'))
                         if value_length > max_length:
                             max_length = value_length
                     except:
                         pass
-                # Añadir un poco más de espacio para el borde y padding
                 adjusted_width = (max_length + 4) * 1.1
-                # Asegurarse de que la columna de valor (D) tenga suficiente ancho para los números
-                if column_letter == 'D':
-                    adjusted_width = max(adjusted_width, 15)  # Mínimo 15 caracteres para la columna de valor
-                ws_detalle.column_dimensions[column_letter].width = min(adjusted_width, 50)  # Aumentado el ancho máximo a 50
+                ws_detalle.column_dimensions[column_letter].width = min(adjusted_width, 40)
             
-            # 2. Hoja de Resumen por Tipo de Gasto
-            ws_resumen = wb.create_sheet("Resumen por Tipo_Anual")
+            # 2. Agrupar facturas por mes y año
+            facturas_por_mes = {}
+            for factura in self.facturas:
+                try:
+                    # Intentar parsear la fecha en formato dd/mm/yyyy
+                    fecha = datetime.strptime(factura['fecha'], '%d/%m/%Y')
+                    mes_anio = fecha.strftime('%Y-%m')  # Formato: YYYY-MM
+
+                    if mes_anio not in facturas_por_mes:
+                        facturas_por_mes[mes_anio] = []
+                    facturas_por_mes[mes_anio].append(factura)
+                except ValueError as e:
+                    logger.warning(f"No se pudo parsear la fecha: {factura['fecha']}. Error: {e}")
+                    continue
+            
+            # 3. Crear una hoja para cada mes
+            for mes_anio, facturas_mes in facturas_por_mes.items():
+                try:
+                    # Crear nombre de hoja en formato 'YYYY-MM Mes' (ej. '2025-08 Agosto')
+                    fecha = datetime.strptime(mes_anio, '%Y-%m')
+                    nombre_mes = f"{fecha.strftime('%Y-%m')} {fecha.strftime('%B').capitalize()}"
+
+                    # Limitar el nombre de la hoja a 31 caracteres (límite de Excel)
+                    nombre_hoja = nombre_mes[:31]
+
+                    # Crear hoja para el mes
+                    ws_mes = wb.create_sheet(nombre_hoja)
+
+                    # Título del mes
+                    titulo_mes = f"Facturas de {fecha.strftime('%B').capitalize()} {fecha.year}"
+                    ws_mes.append([titulo_mes])
+                    ws_mes.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+                    titulo_cell = ws_mes.cell(row=1, column=1)
+                    titulo_cell.font = Font(size=14, bold=True)
+                    titulo_cell.alignment = Alignment(horizontal='center')
+
+                    # Resumen del mes
+                    total_mes = sum(f['valor'] for f in facturas_mes)
+                    ws_mes.append([f"Total del mes: ${total_mes:,.0f} COP"])
+                    ws_mes.merge_cells(start_row=2, start_column=1, end_row=2, end_column=4)
+                    total_cell = ws_mes.cell(row=2, column=1)
+                    total_cell.font = Font(bold=True)
+
+                    # Espacio antes de la tabla
+                    ws_mes.append([])
+
+                    # Encabezados de la tabla
+                    for col_num, header in enumerate(headers, 1):
+                        cell = ws_mes.cell(row=4, column=col_num, value=header)
+                        cell.font = header_font
+                        cell.fill = header_fill
+
+                    # Datos de las facturas del mes
+                    # Escribir los datos de las facturas
+                    for row_num, factura in enumerate(facturas_mes, 5):
+                        ws_mes.cell(row=row_num, column=1, value=factura['fecha'])
+                        ws_mes.cell(row=row_num, column=2, value=factura['tipo'])
+                        ws_mes.cell(row=row_num, column=3, value=factura['descripcion'])
+
+                        # Formato de moneda para la columna de valor
+                        cell_valor = ws_mes.cell(row=row_num, column=4, value=float(factura['valor']))
+                        cell_valor.number_format = money_format
+                    
+                    # Crear tabla para el mes después de escribir todos los datos
+                    if facturas_mes:  # Solo crear tabla si hay datos
+                        try:
+                            # Calcular la última fila de datos (5 + len - 1 ya que empezamos en 5)
+                            last_row = 4 + len(facturas_mes)
+                            table_ref = f"A4:D{last_row}"  # Rango desde A4 hasta D{última fila}
+                            
+                            # Crear un nombre de tabla único y válido para Excel
+                            table_name = f"Tabla_{mes_anio.replace('-', '_')}"
+                            
+                            # Asegurarse de que no haya tablas con el mismo nombre
+                            if table_name in ws_mes._tables:
+                                del ws_mes._tables[table_name]
+                            
+                            # Crear la tabla
+                            table = Table(displayName=table_name, ref=table_ref)
+                            
+                            # Configurar el estilo de la tabla
+                            style = TableStyleInfo(
+                                name="TableStyleMedium9",
+                                showFirstColumn=False,
+                                showLastColumn=False,
+                                showRowStripes=True,
+                                showColumnStripes=False
+                            )
+                            table.tableStyleInfo = style
+                            
+                            # Agregar la tabla a la hoja
+                            ws_mes.add_table(table)
+                            
+                        except Exception as e:
+                            logger.warning(f"No se pudo crear la tabla para el mes {mes_anio}: {str(e)}")
+                            # Continuar con la ejecución a pesar del error en la tabla
+                        
+                        # Ajustar ancho de columnas
+                        # Primero, obtener el rango de celdas que no están fusionadas
+                        data_rows = []
+                        for row in ws_mes.iter_rows(min_row=4):  # Empezar después de los títulos
+                            if all(cell.value is not None for cell in row):
+                                data_rows.append(row)
+                        
+                        # Si no hay filas de datos, saltar el ajuste
+                        if not data_rows:
+                            continue
+                            
+                        # Obtener el número de columnas
+                        num_columns = len(data_rows[0])
+                        
+                        # Ajustar el ancho de cada columna
+                        for col_idx in range(num_columns):
+                            try:
+                                # Obtener la letra de la columna
+                                column_letter = get_column_letter(col_idx + 1)
+                                max_length = 0
+                                
+                                # Ajustar para el encabezado (fila 4)
+                                header_cell = ws_mes.cell(row=4, column=col_idx + 1)
+                                if header_cell and header_cell.value:
+                                    max_length = len(str(header_cell.value))
+                                
+                                # Especificar un ancho mínimo para la columna de valor (columna D)
+                                if column_letter == 'D':
+                                    max_length = max(max_length, 15)  # Mínimo para valores monetarios
+                                
+                                # Revisar las celdas de datos
+                                for row in data_rows:
+                                    cell = row[col_idx]
+                                    if cell and cell.value is not None:
+                                        # Para celdas con formato de moneda
+                                        if hasattr(cell, 'number_format') and 'COP' in str(cell.number_format):
+                                            formatted_value = f"{float(cell.value):,.2f} COP"
+                                            value_length = len(formatted_value)
+                                        else:
+                                            value_length = len(str(cell.value))
+                                        
+                                        if value_length > max_length:
+                                            max_length = value_length
+                                
+                                # Ajustar el ancho con espacio adicional
+                                if max_length > 0:
+                                    adjusted_width = (max_length + 2) * 1.2
+                                    # Limitar el ancho máximo a 50 caracteres
+                                    ws_mes.column_dimensions[column_letter].width = min(adjusted_width, 50)
+                                    
+                                    # Asegurar que la columna de valor tenga un ancho mínimo
+                                    if column_letter == 'D':
+                                        ws_mes.column_dimensions[column_letter].width = max(
+                                            ws_mes.column_dimensions[column_letter].width, 15
+                                        )
+                                        
+                            except Exception as e:
+                                logger.warning(f"No se pudo ajustar el ancho de la columna {col_idx + 1}: {str(e)}")
+                                continue
+                
+                except Exception as e:
+                    logger.error(f"Error al crear la hoja para el mes {mes_anio}: {str(e)}")
+                    continue
+
+            
+            # 4. Hoja de Resumen por Tipo de Gasto
+            ws_resumen = wb.create_sheet("Resumen por Tipo")
             
             # Calcular totales por tipo
             total_por_tipo = defaultdict(float)
@@ -1787,7 +1943,7 @@ class MainWindow(QMainWindow):
                 adjusted_width = (max_length + 4) * 1.1
                 ws_resumen.column_dimensions[column_letter].width = min(adjusted_width, 50)  # Aumentado el ancho máximo a 50
             
-            # 3. Hoja de Resumen Mensual
+            # 5. Hoja de Resumen Mensual
             ws_mensual = wb.create_sheet("Resumen Mensual")
             
             # Calcular totales por mes y año
@@ -1845,22 +2001,53 @@ class MainWindow(QMainWindow):
                     adjusted_width = (max_length + 4) * 1.1
                     ws_mensual.column_dimensions[column_letter].width = min(adjusted_width, 40)  # Ajustado el ancho máximo
             
-            # Guardar el archivo
-            wb.save(file_path)
+            # Guardar el archivo con configuración para evitar advertencias
+            temp_file = file_path + '.tmp'
+            try:
+                # Guardar primero en un archivo temporal
+                wb.save(temp_file)
+                
+                # Si el archivo de destino existe, eliminarlo
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                
+                # Renombrar el archivo temporal al nombre final
+                os.rename(temp_file, file_path)
+                
+                # Actualizar el directorio de exportación en la configuración
+                config['APP']['last_export_dir'] = str(Path(file_path).parent)
+                save_config(config)
+                
+                # Mostrar mensaje de éxito
+                QMessageBox.information(
+                    self,
+                    "Exportación exitosa",
+                    f"Los datos se han exportado correctamente a:\n{file_path}"
+                )
+                
+                logger.info(f"Datos exportados exitosamente a {file_path}")
+                
+            except Exception as e:
+                # Si hay un error, intentar limpiar el archivo temporal
+                if os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except:
+                        pass
+                raise e
             
-            # Mostrar mensaje de éxito
-            QMessageBox.information(
-                self,
-                "Exportación exitosa",
-                f"Los datos se han exportado correctamente a:\n{file_path}"
-            )
+        except PermissionError:
+            error_msg = "No se pudo guardar el archivo. Asegúrese de que el archivo no esté abierto en otro programa."
+            logger.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error de permisos", error_msg)
             
         except Exception as e:
-            logger.error(f"Error al exportar a Excel: {str(e)}", exc_info=True)
+            error_msg = f"Ocurrió un error al exportar a Excel: {str(e)}"
+            logger.error(error_msg, exc_info=True)
             QMessageBox.critical(
                 self,
                 "Error al exportar",
-                f"Ocurrió un error al exportar a Excel:\n{str(e)}\n\nPor favor, revise los logs para más detalles."
+                f"{error_msg}\n\nPor favor, revise los logs para más detalles."
             )
             # Encabezados
             headers = ["Tipo de Gasto", "Total (COP)", "Porcentaje"]
