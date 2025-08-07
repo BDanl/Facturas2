@@ -1,0 +1,302 @@
+[
+  {
+    "fecha": "05/08/2025",
+    "tipo": "Gastos urgentes",
+    "descripcion": "gato",
+    "valor": 120000.0
+  },
+  {
+    "tipo": "Mercado",
+    "descripcion": "Frutas, bebidas, chocolates",
+    "valor": 120000.0,
+    "fecha": "03/08/2025",
+    "timestamp": "2025-08-03T00:00:00"
+  },
+  {
+    "tipo": "Transporte",
+    "descripcion": "bus, metro",
+    "valor": 12000.0,
+    "fecha": "03/07/2025",
+    "timestamp": "2025-07-03T00:00:00"
+  },
+  {
+    "tipo": "Gastos urgentes",
+    "descripcion": "Hospitalizacion",
+    "valor": 1230000.0,
+    "fecha": "15/07/2025",
+    "timestamp": "2025-07-15T00:00:00"
+  },
+  {
+    "tipo": "Transporte",
+    "descripcion": "Metro",
+    "valor": 31000.0,
+    "fecha": "02/08/2025",
+    "timestamp": "2025-08-03T16:29:13.810184"
+  },
+  {
+    "tipo": "Transporte",
+    "descripcion": "Metro",
+    "valor": 31000.0,
+    "fecha": "01/08/2025",
+    "timestamp": "2025-08-03T16:29:55.662207"
+  },
+  {
+    "tipo": "Farmacia",
+    "descripcion": "Sevedol",
+    "valor": 80000.0,
+    "fecha": "24/07/2025",
+    "timestamp": "2025-08-03T16:37:16.320075"
+  },
+  {
+    "tipo": "Gastos urgentes",
+    "descripcion": "pizza",
+    "valor": 8000.0,
+    "fecha": "24/07/2025",
+    "timestamp": "2025-08-03T16:39:16.823128"
+  },
+  {
+    "tipo": "Varios",
+    "descripcion": "juguete",
+    "valor": 2000.0,
+    "fecha": "03/08/2025",
+    "timestamp": "2025-08-03T16:44:36.264287"
+  },
+  {
+    "tipo": "Farmacia",
+    "descripcion": "acetaminofen",
+    "valor": 80000.0,
+    "fecha": "03/08/2025",
+    "timestamp": "2025-08-03T16:49:25.561132"
+  },
+  {
+    "fecha": "07/08/2025",
+    "tipo": "Varios",
+    "descripcion": "Cucharas",
+    "valor": 23000.0
+  },
+  {
+    "fecha": "05/08/2025",
+    "tipo": "Gastos urgentes",
+    "descripcion": "gato",
+    "valor": 120000.0
+  },
+  {
+    "tipo": "Mercado",
+    "descripcion": "Frutas, bebidas, chocolates",
+    "valor": 120000.0,
+    "fecha": "03/08/2025",
+    "timestamp": "2025-08-03T00:00:00"
+  },
+  {
+    "tipo": "Transporte",
+    "descripcion": "bus, metro",
+    "valor": 12000.0,
+    "fecha": "03/07/2025",
+    "timestamp": "2025-07-03T00:00:00"
+  },
+  {
+    "tipo": "Gastos urgentes",
+    "descripcion": "Hospitalizacion",
+    "valor": 1230000.0,
+    "fecha": "15/07/2025",
+    "timestamp": "2025-07-15T00:00:00"
+  },
+  {
+    "tipo": "Transporte",
+    "descripcion": "Metro",
+    "valor": 31000.0,
+    "fecha": "02/08/2025",
+    "timestamp": "2025-08-03T16:29:13.810184"
+  },
+  {
+    "tipo": "Transporte",
+    "descripcion": "Metro",
+    "valor": 31000.0,
+    "fecha": "01/08/2025",
+    "timestamp": "2025-08-03T16:29:55.662207"
+  },
+  {
+    "tipo": "Farmacia",
+    "descripcion": "Sevedol",
+    "valor": 80000.0,
+    "fecha": "24/07/2025",
+    "timestamp": "2025-08-03T16:37:16.320075"
+  },
+  {
+    "tipo": "Gastos urgentes",
+    "descripcion": "pizza",
+    "valor": 8000.0,
+    "fecha": "24/07/2025",
+    "timestamp": "2025-08-03T16:39:16.823128"
+  },
+  {
+    "tipo": "Varios",
+    "descripcion": "juguete",
+    "valor": 2000.0,
+    "fecha": "03/08/2025",
+    "timestamp": "2025-08-03T16:44:36.264287"
+  },
+  {
+    "tipo": "Farmacia",
+    "descripcion": "acetaminofen",
+    "valor": 80000.0,
+    "fecha": "03/08/2025",
+    "timestamp": "2025-08-03T16:49:25.561132"
+  },
+  {
+    "fecha": "07/08/2025",
+    "tipo": "Varios",
+    "descripcion": "Cucharas",
+    "valor": 23000.0
+  },
+  {
+    "fecha": "05/08/2025",
+    "tipo": "Gastos urgentes",
+    "descripcion": "gato",
+    "valor": 120000.0
+  },
+  {
+    "tipo": "Mercado",
+    "descripcion": "Frutas, bebidas, chocolates",
+    "valor": 120000.0,
+    "fecha": "03/08/2025",
+    "timestamp": "2025-08-03T00:00:00"
+  },
+  {
+    "tipo": "Transporte",
+    "descripcion": "bus, metro",
+    "valor": 12000.0,
+    "fecha": "03/07/2025",
+    "timestamp": "2025-07-03T00:00:00"
+  },
+  {
+    "tipo": "Gastos urgentes",
+    "descripcion": "Hospitalizacion",
+    "valor": 1230000.0,
+    "fecha": "15/07/2025",
+    "timestamp": "2025-07-15T00:00:00"
+  },
+  {
+    "tipo": "Transporte",
+    "descripcion": "Metro",
+    "valor": 31000.0,
+    "fecha": "02/08/2025",
+    "timestamp": "2025-08-03T16:29:13.810184"
+  },
+  {
+    "tipo": "Transporte",
+    "descripcion": "Metro",
+    "valor": 31000.0,
+    "fecha": "01/08/2025",
+    "timestamp": "2025-08-03T16:29:55.662207"
+  },
+  {
+    "tipo": "Farmacia",
+    "descripcion": "Sevedol",
+    "valor": 80000.0,
+    "fecha": "24/07/2025",
+    "timestamp": "2025-08-03T16:37:16.320075"
+  },
+  {
+    "tipo": "Gastos urgentes",
+    "descripcion": "pizza",
+    "valor": 8000.0,
+    "fecha": "24/07/2025",
+    "timestamp": "2025-08-03T16:39:16.823128"
+  },
+  {
+    "tipo": "Varios",
+    "descripcion": "juguete",
+    "valor": 2000.0,
+    "fecha": "03/08/2025",
+    "timestamp": "2025-08-03T16:44:36.264287"
+  },
+  {
+    "tipo": "Farmacia",
+    "descripcion": "acetaminofen",
+    "valor": 80000.0,
+    "fecha": "03/08/2025",
+    "timestamp": "2025-08-03T16:49:25.561132"
+  },
+  {
+    "fecha": "07/08/2025",
+    "tipo": "Varios",
+    "descripcion": "Cucharas",
+    "valor": 23000.0
+  },
+  {
+    "fecha": "05/08/2025",
+    "tipo": "Gastos urgentes",
+    "descripcion": "gato",
+    "valor": 120000.0
+  },
+  {
+    "tipo": "Mercado",
+    "descripcion": "Frutas, bebidas, chocolates",
+    "valor": 120000.0,
+    "fecha": "03/08/2025",
+    "timestamp": "2025-08-03T00:00:00"
+  },
+  {
+    "tipo": "Transporte",
+    "descripcion": "bus, metro",
+    "valor": 12000.0,
+    "fecha": "03/07/2025",
+    "timestamp": "2025-07-03T00:00:00"
+  },
+  {
+    "tipo": "Gastos urgentes",
+    "descripcion": "Hospitalizacion",
+    "valor": 1230000.0,
+    "fecha": "15/07/2025",
+    "timestamp": "2025-07-15T00:00:00"
+  },
+  {
+    "tipo": "Transporte",
+    "descripcion": "Metro",
+    "valor": 31000.0,
+    "fecha": "02/08/2025",
+    "timestamp": "2025-08-03T16:29:13.810184"
+  },
+  {
+    "tipo": "Transporte",
+    "descripcion": "Metro",
+    "valor": 31000.0,
+    "fecha": "01/08/2025",
+    "timestamp": "2025-08-03T16:29:55.662207"
+  },
+  {
+    "tipo": "Farmacia",
+    "descripcion": "Sevedol",
+    "valor": 80000.0,
+    "fecha": "24/07/2025",
+    "timestamp": "2025-08-03T16:37:16.320075"
+  },
+  {
+    "tipo": "Gastos urgentes",
+    "descripcion": "pizza",
+    "valor": 8000.0,
+    "fecha": "24/07/2025",
+    "timestamp": "2025-08-03T16:39:16.823128"
+  },
+  {
+    "tipo": "Varios",
+    "descripcion": "juguete",
+    "valor": 2000.0,
+    "fecha": "03/08/2025",
+    "timestamp": "2025-08-03T16:44:36.264287"
+  },
+  {
+    "tipo": "Farmacia",
+    "descripcion": "acetaminofen",
+    "valor": 80000.0,
+    "fecha": "03/08/2025",
+    "timestamp": "2025-08-03T16:49:25.561132"
+  },
+  {
+    "fecha": "07/08/2025",
+    "tipo": "Varios",
+    "descripcion": "Cucharas",
+    "valor": 23000.0
+  }
+]
