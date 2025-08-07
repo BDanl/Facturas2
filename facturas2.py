@@ -4,12 +4,12 @@ import csv
 import locale
 import logging
 import os
-from datetime import datetime, timedelta
-from collections import defaultdict, OrderedDict
-from decimal import Decimal, ROUND_HALF_UP
+from datetime import datetime, date
+from pathlib import Path
+from collections import defaultdict
 import webbrowser
 import configparser
-from pathlib import Path
+from database import Database
 import openpyxl
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side, numbers
@@ -83,26 +83,53 @@ except:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Gestor de Facturas - Peso Colombiano")
-        self.setMinimumSize(1000, 700)
+        self.setWindowTitle("Gestor de Facturas")
+        self.setGeometry(100, 100, 1000, 600)
         
-        # Archivo para guardar datos
-        self.archivo_datos = "facturas_qt.json"
+        # Configuración del directorio de la aplicación
+        self.app_dir = Path.home() / "FacturasApp"
+        self.app_dir.mkdir(exist_ok=True)
+        
+        # Inicializar la base de datos SQLite
+        self.db = Database(str(self.app_dir / "facturas.db"))
+        
+        # Verificar si hay que migrar datos desde el archivo JSON antiguo
+        self._migrar_datos_desde_json()
+        
+        # Configuración del tema
+        self.tema_oscuro = False
+        
+        # Inicializar atributos
         self.facturas = []
+        self.tipos_gasto = []
         
-        try:
-            self.facturas = self.cargar_datos()
-            logger.info(f"Datos cargados correctamente desde {self.archivo_datos}")
-        except Exception as e:
-            logger.error(f"Error al cargar los datos: {str(e)}")
-            QMessageBox.critical(self, "Error", f"No se pudieron cargar los datos: {str(e)}")
+        # Cargar datos sin actualizar la UI aún
+        self.cargar_datos(actualizar_ui=False)
         
         # Inicializar la interfaz de usuario
         self.init_ui()
         
-        # Actualizar la lista de facturas después de que la interfaz esté lista
-        if hasattr(self, 'tabla_facturas'):
-            self.actualizar_lista_facturas()
+        # Actualizar la UI con los datos cargados
+        self.actualizar_lista_facturas()
+        self.actualizar_filtros()
+        self.actualizar_resumen()
+    
+    def _migrar_datos_desde_json(self):
+        """Migra los datos desde el archivo JSON antiguo a la base de datos SQLite si es necesario."""
+        json_path = Path("facturas_qt.json")
+        if json_path.exists():
+            try:
+                # Verificar si ya hay datos en la base de datos
+                facturas = self.db.obtener_facturas()
+                if not facturas:
+                    # Migrar solo si no hay datos en la base de datos
+                    self.db.migrar_desde_json(str(json_path))
+                    # Opcional: respaldar el archivo JSON después de la migración
+                    backup_path = json_path.with_suffix(f".{datetime.now().strftime('%Y%m%d%H%M%S')}.json")
+                    json_path.rename(backup_path)
+                    logging.info(f"Datos migrados exitosamente. Archivo original respaldado como {backup_path}")
+            except Exception as e:
+                logging.error(f"Error al migrar datos desde JSON: {str(e)}")
     
     def init_ui(self):
         """Inicializar la interfaz de usuario"""
@@ -159,7 +186,6 @@ class MainWindow(QMainWindow):
         main_layout.addLayout(toolbar)
         
         # Inicializar tema (por defecto: modo claro)
-        self.tema_oscuro = False
         self.cargar_preferencia_tema()
         
         # Configurar pestañas
@@ -428,7 +454,8 @@ class MainWindow(QMainWindow):
         # Menú desplegable para importar desde diferentes formatos
         self.menu_importar = QPushButton("Importar Facturas ▼")
         self.menu_importar.setToolTip("Importar facturas desde diferentes formatos")
-        self.menu_importar.setFixedSize(150, 32)
+        self.menu_importar.setMinimumWidth(180)  # Increased minimum width for better text fit
+        self.menu_importar.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         
         # Crear menú desplegable
         self.import_menu = QMenu(self)
@@ -523,26 +550,18 @@ class MainWindow(QMainWindow):
         layout.addLayout(bottom_btn_layout)
     
     def cargar_datos(self):
-        """Cargar datos desde archivo JSON"""
+        """Cargar datos desde la base de datos"""
         try:
-            with open(self.archivo_datos, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            logger.warning(f"Archivo {self.archivo_datos} no encontrado. Se creará uno nuevo.")
-            return []
-        except json.JSONDecodeError as e:
-            logger.error(f"Error al decodificar el archivo JSON: {str(e)}")
-            QMessageBox.critical(self, "Error", "El archivo de datos está corrupto")
-            return []
+            self.facturas = self.db.obtener_facturas()
+            logger.info(f"Datos cargados correctamente desde la base de datos")
         except Exception as e:
-            logger.error(f"Error inesperado al cargar datos: {str(e)}", exc_info=True)
-            return []
+            logger.error(f"Error al cargar los datos: {str(e)}")
+            QMessageBox.critical(self, "Error", f"No se pudieron cargar los datos: {str(e)}")
     
     def guardar_datos(self):
-        """Guardar datos en archivo JSON"""
+        """Guardar datos en la base de datos"""
         try:
-            with open(self.archivo_datos, 'w', encoding='utf-8') as f:
-                json.dump(self.facturas, f, ensure_ascii=False, indent=2)
+            self.db.guardar_facturas(self.facturas)
             return True
         except Exception as e:
             logger.error(f"Error al guardar datos: {str(e)}", exc_info=True)
@@ -745,11 +764,6 @@ class MainWindow(QMainWindow):
             self.texto_resumen_anual.setPlainText(texto)
         except Exception as e:
             logger.error(f"Error al actualizar resumen anual: {str(e)}")
-        else:
-            texto += "No hay datos para mostrar en este año."
-        
-        # Mostrar en el área de texto
-        self.texto_resumen_anual.setPlainText(texto)
     
     def inicializar_filtros(self):
         """Inicializar los valores de los filtros"""
@@ -1541,52 +1555,80 @@ class MainWindow(QMainWindow):
             error_msg = f"Error al importar desde JSON: {str(e)}"
             logger.error(error_msg, exc_info=True)
             QMessageBox.critical(self, "Error", error_msg)
-        finally:
-            if loading_box.isVisible():
-                loading_box.close()
+    
+    def cargar_datos(self, actualizar_ui=True):
+        """Cargar datos desde la base de datos
         
-        if not file_path:
-            return  # Usuario canceló el diálogo
-        
+        Args:
+            actualizar_ui (bool): Si es True, actualiza la interfaz de usuario
+        """
         try:
-            # Leer el archivo JSON
-            with open(file_path, 'r', encoding='utf-8') as f:
-                facturas_importadas = json.load(f)
+            # Obtener todas las facturas de la base de datos
+            self.facturas = self.db.obtener_facturas()
             
-            if not isinstance(facturas_importadas, list):
-                QMessageBox.critical(
-                    self, 
-                    "Error", 
-                    "El archivo JSON debe contener un arreglo de facturas."
-                )
-                return
+            # Actualizar la interfaz si está solicitado y los componentes existen
+            if actualizar_ui:
+                if hasattr(self, 'tabla_facturas'):
+                    self.actualizar_lista_facturas()
+                if hasattr(self, 'actualizar_resumen'):
+                    self.actualizar_resumen()
             
-            # Validar que las facturas tengan los campos requeridos
-            facturas_validas = []
-            for factura in facturas_importadas:
-                if not all(key in factura for key in ['fecha', 'tipo', 'descripcion', 'valor']):
-                    logger.warning(f"Factura sin campos requeridos: {factura}")
-                    continue
-                facturas_validas.append(factura)
+            logger.info(f"Se cargaron {len(self.facturas)} facturas desde la base de datos")
+            return True
             
-            if not facturas_validas:
-                QMessageBox.warning(
-                    self, 
-                    "Importar JSON", 
-                    "No se encontraron facturas válidas en el archivo."
-                )
-                return
+        except Exception as e:
+            error_msg = f"Error al cargar los datos de la base de datos: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            if hasattr(self, 'isVisible'):  # Solo mostrar mensaje si la ventana está visible
+                QMessageBox.critical(self, "Error", error_msg)
+            self.facturas = []
+            return False
             
-            # Preguntar al usuario si desea sobrescribir o agregar
-            reply = QMessageBox.question(
-                self,
-                'Importar JSON',
-                f'¿Desea sobrescribir las facturas existentes con las {len(facturas_validas)} facturas del archivo?\n' \
-                '"No" agregará las facturas a las existentes.',
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Cancel
-            )
+    def guardar_datos(self):
+        """Guardar datos en la base de datos"""
+        try:
+            # Guardar todas las facturas en la base de datos
+            if hasattr(self, 'facturas'):
+                # Obtener las facturas actuales de la base de datos
+                facturas_actuales = {f['id']: f for f in self.db.obtener_facturas()}
+                
+                # Actualizar o insertar facturas
+                for factura in self.facturas:
+                    if 'id' in factura and factura['id'] in facturas_actuales:
+                        # Actualizar factura existente
+                        self.db.actualizar_factura(
+                            factura_id=factura['id'],
+                            fecha=factura['fecha'],
+                            tipo=factura['tipo'],
+                            descripcion=factura['descripcion'],
+                            valor=factura['valor']
+                        )
+                        # Eliminar de facturas_actuales para marcar como procesada
+                        facturas_actuales.pop(factura['id'], None)
+                    else:
+                        # Insertar nueva factura
+                        factura_id = self.db.agregar_factura(
+                            fecha=factura['fecha'],
+                            tipo=factura['tipo'],
+                            descripcion=factura['descripcion'],
+                            valor=factura['valor']
+                        )
+                        # Actualizar el ID en la factura local
+                        factura['id'] = factura_id
+                
+                # Eliminar facturas que ya no están en self.facturas
+                for factura_id in facturas_actuales:
+                    self.db.eliminar_factura(factura_id)
+                
+                logger.info(f"Se guardaron {len(self.facturas)} facturas en la base de datos")
+                return True
+            return False
             
+        except Exception as e:
+            error_msg = f"Error al guardar los datos en la base de datos: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
+            return False
             if reply == QMessageBox.StandardButton.Cancel:
                 return
             
@@ -2430,122 +2472,205 @@ class MainWindow(QMainWindow):
             # Estilo para modo oscuro (negros y rosados)
             self.setStyleSheet("""
                 /* Estilos generales */
-                QMainWindow, QDialog, QWidget, QTabWidget::pane, QTabBar::tab:selected {
+                QMainWindow, QDialog, QWidget {
                     background-color: #121212;
                     color: #f8f9fa;
+                    font-size: 11pt;
                 }
                 
-                /* Pestañas */
-                QTabBar::tab {
-                    background: #1e1e1e;
-                    color: #f8f9fa;
-                    padding: 8px 20px;
-                    border: 1px solid #ff4081;
-                    border-bottom: none;
-                    border-top-left-radius: 4px;
-                    border-top-right-radius: 4px;
-                    margin-right: 2px;
-                }
-                
-                QTabBar::tab:selected {
-                    background: #ff4081;
-                    color: #121212;
-                    font-weight: bold;
-                    border-bottom: 1px solid #ff4081;
-                }
-                
-                QTabBar::tab:!selected {
-                    margin-top: 2px;
-                    background: #2a2a2a;
-                }
-                
-                /* Botones */
-                QPushButton {
-                    background-color: #2a2a2a;
-                    color: #f8f9fa;
-                    border: 1px solid #ff4081;
-                    padding: 5px 15px;
-                    border-radius: 4px;
-                }
-                
-                QPushButton:hover {
-                    background-color: #ff4081;
-                    color: #121212;
-                }
-                
-                QPushButton:pressed {
-                    background-color: #c2185b;
-                }
-                
-                /* Campos de entrada */
-                QLineEdit, QTextEdit, QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox {
+                /* Paneles y contenedores */
+                QFrame, QGroupBox {
                     background-color: #1e1e1e;
-                    color: #f8f9fa;
-                    border: 1px solid #ff4081;
-                    padding: 5px;
-                    border-radius: 4px;
-                    selection-background-color: #ff4081;
-                }
-                
-                /* Tablas */
-                QTableWidget {
-                    background-color: #121212;
-                    color: #f8f9fa;
-                    gridline-color: #2a2a2a;
-                    border: 1px solid #2a2a2a;
-                    alternate-background-color: #1a1a1a;
-                }
-                
-                QTableWidget::item {
-                    padding: 5px;
-                    border-bottom: 1px solid #2a2a2a;
-                }
-                
-                QTableWidget::item:selected {
-                    background-color: #ff4081;
-                    color: #121212;
-                }
-                
-                QHeaderView::section {
-                    background-color: #1e1e1e;
-                    color: #f8f9fa;
-                    padding: 5px;
-                    border: 1px solid #2a2a2a;
-                    border-top: none;
-                    border-bottom: 2px solid #ff4081;
-                }
-                
-                /* Grupos */
-                QGroupBox {
-                    border: 1px solid #ff4081;
-                    border-radius: 4px;
-                    margin-top: 10px;
-                    padding-top: 15px;
-                    color: #f8f9fa;
+                    border: 1px solid #333;
+                    border-radius: 6px;
+                    padding: 15px;
+                    margin: 5px;
                 }
                 
                 QGroupBox::title {
                     subcontrol-origin: margin;
                     left: 10px;
                     padding: 0 5px;
-                    color: #ff80ab;
+                    color: #f8f9fa;
+                    font-weight: bold;
                 }
                 
-                /* Barra de estado */
-                QStatusBar {
+                /* Pestañas */
+                QTabWidget::pane {
+                    border: 1px solid #444;
+                    border-radius: 6px;
+                    background: #1e1e1e;
+                    margin: 5px;
+                }
+                
+                QTabBar::tab {
+                    background: #2a2a2a;
+                    color: #f8f9fa;
+                    padding: 10px 25px;
+                    margin: 2px;
+                    border-top-left-radius: 6px;
+                    border-top-right-radius: 6px;
+                    border: 1px solid #444;
+                    border-bottom: none;
+                    font-weight: 500;
+                    border: 1px solid #ff4081;
+                    border-bottom: none;
+                    border-top-left-radius: 4px;
+                    border-top-right-radius: 4px;
+                    margin-right: 2px;
+                    font-size: 10.5pt;
+                }
+                
+                QTabBar::tab:selected {
+                    background: #121212;
+                    border-color: #ff4081;
+                    border-bottom-color: #121212;
+                    margin-bottom: -1px;
+                    font-weight: 600;
+                }
+                
+                QTabBar::tab:!selected {
+                    margin-top: 4px;
+                    background: #252525;
+                    opacity: 0.8;
+                }
+                
+                QTabBar::tab:hover {
+                    background: #2a2a2a;
+                    opacity: 1;
+                }
+                
+                /* Botones */
+                QPushButton {
+                    background-color: #ff4081;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 15px;
+                    margin: 2px;
+                    font-weight: 500;
+                    font-size: 10pt;
+                    min-height: 32px;
+                    min-width: 100px;
+                }
+                
+                QPushButton:hover {
+                    background-color: #f50057;
+                }
+                
+                QPushButton:pressed {
+                    background-color: #c51162;
+                    background-color: #c51162;
+                }
+                
+                QPushButton:disabled {
+                    background-color: #555;
+                    color: #999;
+
+                }
+                
+                /* Botones de acción */
+                QPushButton#btn_guardar {
+                    background-color: #4caf50;
+                }
+                
+                QPushButton#btn_guardar:hover {
+                    background-color: #43a047;
+                }
+                
+                QPushButton#btn_limpiar, QPushButton#btn_limpiar_filtros {
+                    background-color: #ff9800;
+                }
+                
+                QPushButton#btn_limpiar:hover, QPushButton#btn_limpiar_filtros:hover {
+                    background-color: #f57c00;
+                }
+                
+                QPushButton#btn_eliminar, QPushButton#btn_limpiar_todo {
+                    background-color: #f44336;
+                }
+                
+                QPushButton#btn_eliminar:hover, QPushButton#btn_limpiar_todo:hover {
+                    background-color: #d32f2f;
+                }
+                
+                /* Campos de entrada */
+                QLineEdit, QTextEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit {
+                    background-color: #252525;
+                    color: #f8f9fa;
+                    border: 1px solid #444;
+                    border-radius: 6px;
+                    padding: 8px 14px;
+                    selection-background-color: #ff4081;
+                    font-size: 10.5pt;
+                    min-height: 36px;
+
+                }
+                
+                QLineEdit:focus, QTextEdit:focus, QComboBox:focus, 
+                QSpinBox:focus, QDoubleSpinBox:focus, QDateEdit:focus {
+                    border: 2px solid #ff4081;
+                    background-color: #2a2a2a;
+                }
+                
+                QComboBox::drop-down {
+                    subcontrol-origin: padding;
+                    subcontrol-position: top right;
+                    width: 24px;
+                    border-left: 1px solid #444;
+                    border-top-right-radius: 6px;
+                    border-bottom-right-radius: 6px;
+                }
+                
+                QComboBox::down-arrow {
+                    image: url(icons/down-arrow.png);
+                    width: 12px;
+                    height: 12px;
+                }
+                
+                QComboBox QAbstractItemView {
+                    background-color: #252525;
+                    color: #f8f9fa;
+                    selection-background-color: #ff4081;
+                    border: 1px solid #444;
+                    border-radius: 6px;
+                    padding: 8px;
+                    outline: none;
+                }
+                
+                /* Tablas */
+                QTableWidget {
                     background-color: #1e1e1e;
                     color: #f8f9fa;
-                    border-top: 1px solid #2a2a2a;
+                    gridline-color: #444;
+                    border: 1px solid #444;
+                    border-radius: 6px;
+                    font-size: 10.5pt;
+                    outline: none;
                 }
                 
-                /* Diálogos */
-                QMessageBox {
-                    background-color: #121212;
+                QHeaderView::section {
+                    background-color: #2a2a2a;
                     color: #f8f9fa;
+                    padding: 12px 8px;
+                    border: none;
+                    border-right: 1px solid #444;
+                    border-bottom: 2px solid #ff4081;
+                    font-weight: 600;
+                    font-size: 10.5pt;
                 }
                 
-                QMessageBox QLabel {
-                    color: #f8f9fa;
+                QHeaderView::section:last {
+                    border-right: none;
+                }
+                
+                QTableWidget::item {
+                    padding: 10px 8px;
+                    border-bottom: 1px solid #333;
+                }
+                
+                QTableWidget::item:selected {
+                    background-color: rgba(255, 64, 129, 0.8);
                 }
                 
                 QMessageBox QPushButton {
@@ -2608,100 +2733,19 @@ class MainWindow(QMainWindow):
             # Estilo para modo claro (blancos y azules)
             self.setStyleSheet("""
                 /* Estilos generales */
-                QMainWindow, QDialog, QWidget, QTabWidget::pane, QTabBar::tab:selected {
+                QMainWindow, QDialog, QWidget {
                     background-color: #f8f9fa;
                     color: #212529;
+                    font-size: 11pt;
                 }
                 
-                /* Pestañas */
-                QTabBar::tab {
-                    background: #e9ecef;
-                    color: #495057;
-                    padding: 8px 20px;
-                    border: 1px solid #0d6efd;
-                    border-bottom: none;
-                    border-top-left-radius: 4px;
-                    border-top-right-radius: 4px;
-                    margin-right: 2px;
-                }
-                
-                QTabBar::tab:selected {
-                    background: #0d6efd;
-                    color: white;
-                    font-weight: bold;
-                    border-bottom: 1px solid #0d6efd;
-                }
-                
-                QTabBar::tab:!selected {
-                    margin-top: 2px;
-                    background: #e9ecef;
-                }
-                
-                /* Botones */
-                QPushButton {
-                    background-color: #e9ecef;
-                    color: #212529;
-                    border: 1px solid #ced4da;
-                    padding: 5px 15px;
-                    border-radius: 4px;
-                }
-                
-                QPushButton:hover {
-                    background-color: #0d6efd;
-                    color: white;
-                    border-color: #0b5ed7;
-                }
-                
-                QPushButton:pressed {
-                    background-color: #0b5ed7;
-                }
-                
-                /* Campos de entrada */
-                QLineEdit, QTextEdit, QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox {
-                    background-color: white;
-                    color: #212529;
-                    border: 1px solid #ced4da;
-                    padding: 5px;
-                    border-radius: 4px;
-                    selection-background-color: #0d6efd;
-                    selection-color: white;
-                }
-                
-                /* Tablas */
-                QTableWidget {
-                    background-color: white;
-                    color: #212529;
-                    gridline-color: #dee2e6;
+                /* Paneles y contenedores */
+                QFrame, QGroupBox {
+                    background-color: #ffffff;
                     border: 1px solid #dee2e6;
-                    alternate-background-color: #f8f9fa;
-                }
-                
-                QTableWidget::item {
-                    padding: 5px;
-                    border-bottom: 1px solid #dee2e6;
-                }
-                
-                QTableWidget::item:selected {
-                    background-color: #0d6efd;
-                    color: white;
-                }
-                
-                QHeaderView::section {
-                    background-color: #f1f3f5;
-                    color: #212529;
-                    padding: 5px;
-                    border: 1px solid #dee2e6;
-                    border-top: none;
-                    border-bottom: 2px solid #0d6efd;
-                }
-                
-                /* Grupos */
-                QGroupBox {
-                    border: 1px solid #dee2e6;
-                    border-radius: 4px;
-                    margin-top: 10px;
-                    padding-top: 15px;
-                    color: #212529;
+                    border-radius: 6px;
+                    padding: 15px;
+                    margin: 5px;
                 }
                 
                 QGroupBox::title {
@@ -2709,42 +2753,264 @@ class MainWindow(QMainWindow):
                     left: 10px;
                     padding: 0 5px;
                     color: #0d6efd;
+                    font-weight: bold;
+                }
+                
+                /* Pestañas */
+                QTabWidget::pane {
+                    border: 1px solid #dee2e6;
+                    border-radius: 6px;
+                    background: #ffffff;
+                    margin: 5px;
+                }
+                
+                QTabBar::tab {
+                    background: #e9ecef;
+                    color: #495057;
+                    padding: 10px 25px;
+                    margin: 2px;
+                    border-top-left-radius: 6px;
+                    border-top-right-radius: 6px;
+                    border: 1px solid #dee2e6;
+                    border-bottom: none;
+                    font-weight: 500;
+                    font-size: 10.5pt;
+                }
+                
+                QTabBar::tab:selected {
+                    background: #ffffff;
+                    color: #0d6efd;
+                    border-color: #0d6efd;
+                    border-bottom-color: #ffffff;
+                    margin-bottom: -1px;
+                    font-weight: 600;
+                }
+                
+                QTabBar::tab:!selected {
+                    margin-top: 4px;
+                    background: #e9ecef;
+                    opacity: 0.8;
+                }
+                
+                QTabBar::tab:hover {
+                    background: #e2e6ea;
+                    opacity: 1;
+                }
+                
+                /* Botones */
+                QPushButton {
+                    background-color: #0d6efd;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 15px;
+                    margin: 2px;
+                    font-weight: 500;
+                    font-size: 10pt;
+                    min-height: 32px;
+                    min-width: 100px;
+                }
+                
+                QPushButton:hover {
+                    background-color: #0b5ed7;
+                }
+                
+                QPushButton:pressed {
+                    background-color: #0a58ca;
+                }
+                
+                QPushButton:disabled {
+                    background-color: #e9ecef;
+                    color: #6c757d;
+                }
+                
+                /* Botones de acción */
+                QPushButton#btn_guardar {
+                    background-color: #198754;
+                }
+                
+                QPushButton#btn_guardar:hover {
+                    background-color: #157347;
+                }
+                
+                QPushButton#btn_limpiar, QPushButton#btn_limpiar_filtros {
+                    background-color: #ffc107;
+                    color: #212529;
+                }
+                
+                QPushButton#btn_limpiar:hover, QPushButton#btn_limpiar_filtros:hover {
+                    background-color: #ffca2c;
+                }
+                
+                QPushButton#btn_eliminar, QPushButton#btn_limpiar_todo {
+                    background-color: #dc3545;
+                }
+                
+                QPushButton#btn_eliminar:hover, QPushButton#btn_limpiar_todo:hover {
+                    background-color: #bb2d3b;
+                }
+                
+                /* Campos de entrada */
+                QLineEdit, QTextEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit {
+                    background-color: #ffffff;
+                    color: #212529;
+                    border: 1px solid #ced4da;
+                    border-radius: 6px;
+                    padding: 8px 14px;
+                    selection-background-color: #0d6efd;
+                    font-size: 10.5pt;
+                    min-height: 36px;
+                }
+                
+                QLineEdit:focus, QTextEdit:focus, QComboBox:focus, 
+                QSpinBox:focus, QDoubleSpinBox:focus, QDateEdit:focus {
+                    border: 2px solid #0d6efd;
+                }
+                
+                QComboBox::drop-down {
+                    subcontrol-origin: padding;
+                    subcontrol-position: top right;
+                    width: 24px;
+                    border-left: 1px solid #ced4da;
+                    border-top-right-radius: 6px;
+                    border-bottom-right-radius: 6px;
+                }
+                
+                QComboBox::down-arrow {
+                    image: url(icons/down-arrow.png);
+                    width: 12px;
+                    height: 12px;
+                }
+                
+                QComboBox QAbstractItemView {
+                    background-color: #ffffff;
+                    color: #212529;
+                    selection-background-color: #0d6efd;
+                    border: 1px solid #ced4da;
+                    border-radius: 6px;
+                    padding: 8px;
+                }
+                
+                /* Tablas */
+                QTableWidget {
+                    background-color: #ffffff;
+                    color: #212529;
+                    gridline-color: #dee2e6;
+                    border: 1px solid #dee2e6;
+                    border-radius: 6px;
+                    font-size: 10.5pt;
+                }
+                
+                QHeaderView::section {
+                    background-color: #f8f9fa;
+                    color: #212529;
+                    padding: 12px 8px;
+                    border: none;
+                    border-right: 1px solid #dee2e6;
+                    border-bottom: 2px solid #0d6efd;
+                    font-weight: 600;
+                    font-size: 10.5pt;
+                }
+                
+                QHeaderView::section:last {
+                    border-right: none;
+                }
+                
+                QTableWidget::item {
+                    padding: 10px 8px;
+                    border-bottom: 1px solid #dee2e6;
+                }
+                
+                QTableWidget::item:selected {
+                    background-color: rgba(13, 110, 253, 0.8);
+                    color: white;
+                }
+                
+                QTableWidget::item:hover {
+                    background-color: rgba(0, 0, 0, 0.03);
+                }
+                
+                /* Barras de desplazamiento */
+                QScrollBar:vertical, QScrollBar:horizontal {
+                    border: none;
+                    background: #f8f9fa;
+                    width: 10px;
+                    height: 10px;
+                    margin: 0px;
+                }
+                
+                QScrollBar::handle:vertical, QScrollBar::handle:horizontal {
+                    background: #ced4da;
+                    min-height: 25px;
+                    min-width: 25px;
+                    border-radius: 5px;
+                }
+                
+                QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
+                    background: #adb5bd;
+                }
+                
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+                QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                    height: 0px;
+                    width: 0px;
+                }
+                
+                QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical,
+                QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+                    background: none;
                 }
                 
                 /* Barra de estado */
                 QStatusBar {
-                    background-color: #e9ecef;
-                    color: #212529;
+                    background-color: #f8f9fa;
+                    color: #6c757d;
                     border-top: 1px solid #dee2e6;
+                    font-size: 9.5pt;
+                    padding: 5px 10px;
                 }
                 
-                /* Diálogos */
-                QMessageBox {
-                    background-color: white;
+                /* Título de la ventana */
+                QMainWindow::title {
                     color: #212529;
+                    font-weight: 600;
+                    font-size: 11pt;
                 }
                 
-                QMessageBox QLabel {
+                /* Etiquetas */
+                QLabel {
                     color: #212529;
+                    font-size: 10.5pt;
                 }
                 
-                QMessageBox QPushButton {
-                    min-width: 80px;
-                    background-color: #e9ecef;
+                /* Checkboxes y radio buttons */
+                QCheckBox, QRadioButton {
                     color: #212529;
-                    border: 1px solid #ced4da;
+                    spacing: 8px;
                 }
                 
-                QMessageBox QPushButton:hover {
-                    background-color: #0d6efd;
-                    color: white;
+                QCheckBox::indicator, QRadioButton::indicator {
+                    width: 18px;
+                    height: 18px;
+                    border: 2px solid #adb5bd;
+                    border-radius: 3px;
+                    background: #ffffff;
                 }
                 
-                /* Botones de acción */
-                QPushButton#btn_limpiar_todo, QPushButton#btn_eliminar {
-                    background-color: #dc3545;
-                    color: white;
-                    border: 1px solid #bb2d3b;
+                QCheckBox::indicator:checked, QRadioButton::indicator:checked {
+                    background: #0d6efd;
+                    border-color: #0d6efd;
+                }
+                
+                /* Tooltips */
+                QToolTip {
+                    background-color: #ffffff;
+                    color: #212529;
+                    border: 1px solid #dee2e6;
+                    border-radius: 4px;
+                    padding: 6px 10px;
+                    opacity: 240;
+                    font-size: 10pt;
                 }
                 
                 QPushButton#btn_limpiar_todo:hover, QPushButton#btn_eliminar:hover {
