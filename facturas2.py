@@ -22,7 +22,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
                              QFileDialog, QHeaderView, QTextEdit, QCheckBox, QSplitter,
                              QStyleFactory, QStyle, QTableWidgetSelectionRange, QStatusBar,
                              QGroupBox, QFormLayout, QSpacerItem, QSizePolicy, QTreeWidget, 
-                             QTreeWidgetItem, QMenu)
+                             QTreeWidgetItem, QMenu, QDialog, QListWidget, QDialogButtonBox, 
+                             QListWidgetItem, QProgressDialog)
 from PyQt6.QtGui import QAction, QFont, QColor, QIcon, QDoubleValidator, QTextCursor
 from PyQt6.QtCore import Qt, QSize, QDate, QTimer
 
@@ -1234,7 +1235,7 @@ class MainWindow(QMainWindow):
             sheet = wb[selected_sheet]
             
             # Actualizar mensaje de carga
-            loading_box.setText(f"Procesando hoja: {selected_s}...")
+            loading_box.setText(f"Procesando hoja: {selected_sheet}...")
             QApplication.processEvents()
             
             # Obtener los encabezados

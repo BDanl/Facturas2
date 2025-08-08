@@ -1,17 +1,17 @@
-[
-  {
-    "fecha": "05/08/2025",
-    "tipo": "Gastos urgentes",
-    "descripcion": "gato",
-    "valor": 120000.0
-  },
-  {
-    "tipo": "Mercado",
-    "descripcion": "Frutas, bebidas, chocolates",
-    "valor": 120000.0,
-    "fecha": "03/08/2025",
-    "timestamp": "2025-08-03T00:00:00"
-  },
+  [
+    {
+      "fecha": "05/08/2025",
+      "tipo": "Gastos urgentes",
+      "descripcion": "gato",
+      "valor": 120000.0
+    },
+    {
+      "tipo": "Mercado",
+      "descripcion": "Frutas, bebidas, chocolates",
+      "valor": 120000.0,
+      "fecha": "03/08/2025",
+      "timestamp": "2025-08-03T00:00:00"
+    },
   {
     "tipo": "Transporte",
     "descripcion": "bus, metro",

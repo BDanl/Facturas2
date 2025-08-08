@@ -55,8 +55,51 @@ cover/
 *.mo
 *.pot
 
-# Django stuff:
+# Log files
 *.log
+facturas_qt.log
+
+# Excel files
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
+
+# Archivos de compilación de PyInstaller
+dist_standalone/
+build/
+build_temp/
+*.spec
+
+# Ejecutables
+*.exe
+
+# Archivos temporales
+*.tmp
+*.temp
+
+# Archivos de caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales
+venv/
+env/
+
+# Archivos de configuración local
+*.local
+
+# Archivos de configuración de IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Django stuff:
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
