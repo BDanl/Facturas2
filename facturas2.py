@@ -86,12 +86,21 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Gestor de Facturas")
         # Remove fixed geometry and use showMaximized() after UI is initialized
         
-        # Configuración del directorio de la aplicación
-        self.app_dir = Path.home() / "FacturasApp"
-        self.app_dir.mkdir(exist_ok=True)
+        # Determinar si estamos ejecutando desde un ejecutable o desde el código fuente
+        if getattr(sys, 'frozen', False):
+            # Si es un ejecutable, usamos el directorio del ejecutable
+            self.app_dir = Path(sys._MEIPASS) if hasattr(sys, '_MEIPASS') else Path(sys.executable).parent
+            self.data_dir = Path.home() / "FacturasApp"
+        else:
+            # Si es código fuente, usamos el directorio del proyecto
+            self.app_dir = Path(__file__).parent
+            self.data_dir = self.app_dir
+        
+        # Asegurarse de que el directorio de datos exista
+        self.data_dir.mkdir(exist_ok=True, parents=True)
         
         # Inicializar la base de datos SQLite
-        self.db = Database(str(self.app_dir / "facturas.db"))
+        self.db = Database(str(self.data_dir / "facturas.db"))
         
         # Verificar si hay que migrar datos desde el archivo JSON antiguo
         self._migrar_datos_desde_json()
