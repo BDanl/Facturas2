@@ -4,6 +4,8 @@ import csv
 import locale
 import logging
 import os
+import ctypes
+from ctypes import wintypes
 from datetime import datetime, date
 from pathlib import Path
 from collections import defaultdict
@@ -17,15 +19,40 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 
 # Importaciones de PyQt6
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, 
+                             QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QAbstractItemView, 
                              QTableWidget, QTableWidgetItem, QTabWidget, QMessageBox, 
                              QFileDialog, QHeaderView, QTextEdit, QCheckBox, QSplitter,
                              QStyleFactory, QStyle, QTableWidgetSelectionRange, QStatusBar,
                              QGroupBox, QFormLayout, QSpacerItem, QSizePolicy, QTreeWidget, 
                              QTreeWidgetItem, QMenu, QDialog, QListWidget, QDialogButtonBox, 
-                             QListWidgetItem, QProgressDialog)
-from PyQt6.QtGui import QAction, QFont, QColor, QIcon, QDoubleValidator, QTextCursor
-from PyQt6.QtCore import Qt, QSize, QDate, QTimer
+                             QListWidgetItem, QProgressDialog, QStyledItemDelegate)
+from PyQt6.QtGui import (QAction, QFont, QColor, QIcon, QDoubleValidator, 
+                        QTextCursor, QBrush)
+from PyQt6.QtCore import Qt, QSize, QDate, QTimer, QModelIndex
+
+
+class EditableDelegate(QStyledItemDelegate):
+    """Delegate para controlar qué celdas son editables"""
+    def __init__(self, parent=None, editable_columns=None):
+        super().__init__(parent)
+        self.editable_columns = editable_columns or []
+    
+    def createEditor(self, parent, option, index):
+        """Sobrescribir para crear el editor solo para columnas editables"""
+        if index.column() in self.editable_columns:
+            return super().createEditor(parent, option, index)
+        return None
+    
+    def setEditorData(self, editor, index):
+        """Cargar datos en el editor"""
+        if index.column() in self.editable_columns:
+            super().setEditorData(editor, index)
+    
+    def setModelData(self, editor, model, index):
+        """Guardar datos del editor en el modelo"""
+        if index.column() in self.editable_columns:
+            super().setModelData(editor, model, index)
+
 
 
 # Importaciones para Excel
@@ -43,19 +70,52 @@ except ImportError as e:
     data_dir = Path.home() / 'FacturasApp'
     data_dir.mkdir(exist_ok=True, parents=True)
     
-    # Configurar logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(data_dir / 'facturas_qt.log'),
-            logging.StreamHandler()
-        ]
-    )
-logger = logging.getLogger(__name__)
+def check_single_instance():
+    """Verifica si ya hay una instancia de la aplicación en ejecución"""
+    # Usar un nombre único para el mutex
+    mutex_name = f"Global\\{APP_NAME}_SingleInstanceMutex"
+    
+    # Crear un mutex con nombre
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    last_error = ctypes.get_last_error()
+    
+    if last_error == 183:  # ERROR_ALREADY_EXISTS
+        # Si ya existe, intentar activar la ventana existente
+        hwnd = ctypes.windll.user32.FindWindowW(None, "Gestor de Facturas")
+        if hwnd:
+            # Traer al frente y restaurar si está minimizada
+            ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE = 9
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+            # Traer al frente de las demás ventanas
+            ctypes.windll.user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002)
+        return False
+    return True
+
+def main():
+    # Verificar si ya hay una instancia en ejecución
+    if not check_single_instance():
+        logger.info("Intento de abrir una segunda instancia. Saliendo...")
+        sys.exit(0)
+    
+# Configuración de directorios de la aplicación
+APP_NAME = "GestorFacturas"
+DATA_DIR = Path.home() / 'FacturasApp'
+DATA_DIR.mkdir(exist_ok=True, parents=True)
+
+# Configurar logging a nivel de módulo
+log_file = DATA_DIR / 'gestor_facturas.log'
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file, encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(APP_NAME)
 
 # Configuración de la aplicación
-CONFIG_FILE = str(Path.home() / 'FacturasApp' / 'config.ini')
+CONFIG_FILE = str(DATA_DIR / 'config.ini')
 
 def get_config():
     """Obtener la configuración de la aplicación"""
@@ -104,8 +164,9 @@ class MainWindow(QMainWindow):
         # Asegurarse de que el directorio de datos exista
         self.data_dir.mkdir(exist_ok=True, parents=True)
         
-        # Inicializar la base de datos SQLite
-        self.db = Database(str(self.data_dir / "facturas.db"))
+        # Inicializar la base de datos SQLite en el directorio de datos
+        db_path = DATA_DIR / "facturas.db"
+        self.db = Database(str(db_path))
         
         # Verificar si hay que migrar datos desde el archivo JSON antiguo
         self._migrar_datos_desde_json()
@@ -122,6 +183,9 @@ class MainWindow(QMainWindow):
         
         # Inicializar la interfaz de usuario
         self.init_ui()
+        
+        # Aplicar el tema antes de mostrar la ventana
+        self.aplicar_tema()
         
         # Actualizar la UI con los datos cargados
         self.actualizar_lista_facturas()
@@ -445,6 +509,16 @@ class MainWindow(QMainWindow):
         self.tabla_filtrada.setColumnCount(4)
         self.tabla_filtrada.setHorizontalHeaderLabels(["Fecha", "Tipo", "Descripción", "Valor"])
         
+        # Hacer la tabla editable y configurar el delegado para columnas editables
+        self.tabla_filtrada.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed)
+        
+        # Configurar el delegado para hacer editables solo las columnas de Descripción y Valor (índices 2 y 3)
+        delegate = EditableDelegate(self.tabla_filtrada, editable_columns=[2, 3])
+        self.tabla_filtrada.setItemDelegate(delegate)
+        
+        # Conectar la señal itemChanged al manejador de cambios
+        self.tabla_filtrada.itemChanged.connect(self.guardar_cambios_celda)
+        
         # Configurar cabeceras
         header = self.tabla_filtrada.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Fecha
@@ -527,13 +601,19 @@ class MainWindow(QMainWindow):
         
         # Tabla de facturas
         self.tabla_facturas = QTableWidget()
-        self.tabla_facturas.setColumnCount(5)  # Una columna extra para el checkbox
-        self.tabla_facturas.setHorizontalHeaderLabels(["", "Fecha", "Tipo", "Descripción", "Valor"])
+        self.tabla_facturas.setColumnCount(5)  # Una columna extra para el ID
+        self.tabla_facturas.setHorizontalHeaderLabels(["ID", "Fecha", "Tipo", "Descripción", "Valor"])
         self.tabla_facturas.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tabla_facturas.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         
-        # Ocultar la columna de checkboxes (la usaremos para selección)
-        self.tabla_facturas.setColumnHidden(0, True)
+        # Conectar la señal de cambio de selección
+        self.tabla_facturas.itemSelectionChanged.connect(self.actualizar_boton_eliminar)
+        
+        # Configurar las columnas
+        self.tabla_facturas.setColumnHidden(0, True)  # Ocultar columna de checkboxes
+        
+        # Hacer que solo las columnas de descripción y valor sean editables
+        self.tabla_facturas.setItemDelegate(EditableDelegate(self.tabla_facturas, [3, 4]))  # Índices 3 y 4 para descripción y valor
         
         # Ajustar el tamaño de las columnas
         header = self.tabla_facturas.horizontalHeader()
@@ -543,8 +623,11 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # Descripción
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Valor
         
-        # Hacer que las filas sean seleccionables
-        self.tabla_facturas.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        # Configurar edición de celdas
+        self.tabla_facturas.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed)
+        
+        # Conectar señal de cambio de celda
+        self.tabla_facturas.itemChanged.connect(self.guardar_cambios_celda)
         
         # Layout para el botón de eliminar seleccionadas
         bottom_btn_layout = QHBoxLayout()
@@ -552,7 +635,23 @@ class MainWindow(QMainWindow):
         self.btn_eliminar.clicked.connect(self.eliminar_facturas_seleccionadas)
         self.btn_eliminar.setToolTip("Eliminar las facturas seleccionadas")
         self.btn_eliminar.setEnabled(False)  # Deshabilitado inicialmente
-        self.btn_eliminar.setStyleSheet("background-color: #f8d7da; color: #721c24;")
+        self.btn_eliminar.setStyleSheet("""
+            QPushButton {
+                background-color: #f8d7da;
+                color: #721c24;
+                padding: 5px 10px;
+                border: 1px solid #f5c6cb;
+                border-radius: 4px;
+            }
+            QPushButton:disabled {
+                background-color: #e2e3e5;
+                color: #383d41;
+                border: 1px solid #d6d8db;
+            }
+            QPushButton:hover:!disabled {
+                background-color: #f5c6cb;
+            }
+        """)
         
         # Conectar señal de selección para habilitar/deshabilitar el botón
         self.tabla_facturas.itemSelectionChanged.connect(self.actualizar_boton_eliminar)
@@ -632,14 +731,43 @@ class MainWindow(QMainWindow):
     
     def actualizar_lista_facturas(self):
         """Actualizar la tabla de facturas"""
+        # Desconectar temporalmente la señal para evitar múltiples llamadas
+        try:
+            self.tabla_facturas.itemChanged.disconnect(self.guardar_cambios_celda)
+        except:
+            pass
+            
         self.tabla_facturas.setRowCount(len(self.facturas))
         
         for i, factura in enumerate(self.facturas):
-            # Columna 0 está oculta (para checkboxes), empezamos desde la columna 1
-            self.tabla_facturas.setItem(i, 1, QTableWidgetItem(factura['fecha']))
-            self.tabla_facturas.setItem(i, 2, QTableWidgetItem(factura['tipo']))
-            self.tabla_facturas.setItem(i, 3, QTableWidgetItem(factura['descripcion']))
-            self.tabla_facturas.setItem(i, 4, QTableWidgetItem(f"${factura['valor']:,.0f} COP".replace(',', '.')))
+            # Columna 0 oculta para el ID de la factura
+            item_id = QTableWidgetItem(str(factura.get('id', i)))
+            item_id.setFlags(item_id.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tabla_facturas.setItem(i, 0, item_id)
+            
+            # Fecha (no editable en la tabla)
+            item_fecha = QTableWidgetItem(factura['fecha'])
+            item_fecha.setFlags(item_fecha.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tabla_facturas.setItem(i, 1, item_fecha)
+            
+            # Tipo (no editable en la tabla)
+            item_tipo = QTableWidgetItem(factura['tipo'])
+            item_tipo.setFlags(item_tipo.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tabla_facturas.setItem(i, 2, item_tipo)
+            
+            # Descripción (editable)
+            item_desc = QTableWidgetItem(factura['descripcion'])
+            item_desc.setFlags(item_desc.flags() | Qt.ItemFlag.ItemIsEditable)
+            self.tabla_facturas.setItem(i, 3, item_desc)
+            
+            # Valor (editable)
+            valor_str = f"${float(factura['valor']):,.0f} COP".replace(',', '.')
+            item_valor = QTableWidgetItem(valor_str)
+            item_valor.setFlags(item_valor.flags() | Qt.ItemFlag.ItemIsEditable)
+            self.tabla_facturas.setItem(i, 4, item_valor)
+        
+        # Reconectar la señal después de actualizar la tabla
+        self.tabla_facturas.itemChanged.connect(self.guardar_cambios_celda)
     
     def actualizar_resumen(self):
         """Actualizar todos los resúmenes"""
@@ -808,40 +936,58 @@ class MainWindow(QMainWindow):
     
     def aplicar_filtros(self):
         """Aplicar los filtros seleccionados"""
-        anio = self.combo_filtro_anio.currentData()
-        mes = self.combo_filtro_mes.currentIndex()  # 0 = Todos, 1-12 = meses
-        dia = self.combo_filtro_dia.currentIndex()  # 0 = Todos, 1-31 = días
-        tipo = self.combo_filtro_tipo.currentText() if self.combo_filtro_tipo.currentIndex() > 0 else None
-        
-        # Filtrar facturas
-        facturas_filtradas = []
-        for factura in self.facturas:
-            try:
-                fecha = datetime.strptime(factura['fecha'], '%d/%m/%Y')
-                
-                # Verificar año
-                if anio is not None and fecha.year != anio:
+        try:
+            anio = self.combo_filtro_anio.currentData()
+            mes = self.combo_filtro_mes.currentIndex()  # 0 = Todos, 1-12 = meses
+            dia = self.combo_filtro_dia.currentIndex()  # 0 = Todos, 1-31 = días
+            tipo = self.combo_filtro_tipo.currentText() if self.combo_filtro_tipo.currentIndex() > 0 else None
+            
+            # Filtrar facturas
+            facturas_filtradas = []
+            for factura in self.facturas:
+                try:
+                    # Verificar si la factura tiene el formato de fecha esperado
+                    if 'fecha' not in factura or not isinstance(factura['fecha'], str):
+                        continue
+                        
+                    # Manejar diferentes formatos de fecha
+                    try:
+                        fecha = datetime.strptime(factura['fecha'], '%d/%m/%Y')
+                    except ValueError:
+                        # Intentar con otro formato de fecha si es necesario
+                        try:
+                            fecha = datetime.strptime(factura['fecha'], '%Y-%m-%d')
+                        except ValueError:
+                            logger.warning(f"Formato de fecha no reconocido: {factura['fecha']}")
+                            continue
+                    
+                    # Verificar año
+                    if anio is not None and fecha.year != anio:
+                        continue
+                    
+                    # Verificar mes
+                    if mes > 0 and fecha.month != mes:  # Si no es "Todos los meses"
+                        continue
+                    
+                    # Verificar día
+                    if dia > 0 and fecha.day != dia:  # Si no es "Todos los días"
+                        continue
+                    
+                    # Verificar tipo
+                    if tipo is not None and factura.get('tipo') != tipo:
+                        continue
+                    
+                    facturas_filtradas.append(factura)
+                except Exception as e:
+                    logger.error(f"Error al procesar factura: {str(e)}", exc_info=True)
                     continue
-                
-                # Verificar mes
-                if mes > 0 and fecha.month != mes:  # Si no es "Todos los meses"
-                    continue
-                
-                # Verificar día
-                if dia > 0 and fecha.day != dia:  # Si no es "Todos los días"
-                    continue
-                
-                # Verificar tipo
-                if tipo is not None and factura['tipo'] != tipo:
-                    continue
-                
-                facturas_filtradas.append(factura)
-            except Exception as e:
-                logger.error(f"Error al procesar factura {factura}: {str(e)}")
-                continue
-        
-        # Mostrar resultados
-        self.mostrar_resultados_filtrados(facturas_filtradas)
+            
+            # Mostrar resultados solo si hay cambios para evitar actualizaciones innecesarias
+            self.mostrar_resultados_filtrados(facturas_filtradas)
+            
+        except Exception as e:
+            logger.error(f"Error en aplicar_filtros: {str(e)}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Se produjo un error al aplicar los filtros: {str(e)}")
     
     def limpiar_filtros(self):
         """Limpiar todos los filtros"""
@@ -853,33 +999,104 @@ class MainWindow(QMainWindow):
     
     def mostrar_resultados_filtrados(self, facturas):
         """Mostrar las facturas filtradas en la tabla"""
-        self.tabla_filtrada.setRowCount(len(facturas))
-        
-        for i, factura in enumerate(facturas):
-            self.tabla_filtrada.setItem(i, 0, QTableWidgetItem(factura['fecha']))
-            self.tabla_filtrada.setItem(i, 1, QTableWidgetItem(factura['tipo']))
-            self.tabla_filtrada.setItem(i, 2, QTableWidgetItem(factura['descripcion']))
-            self.tabla_filtrada.setItem(i, 3, QTableWidgetItem(f"${factura['valor']:,.0f} COP".replace(',', '.')))
-        
-        # Calcular total
-        total = sum(factura['valor'] for factura in facturas)
-        
-        # Agregar fila de total
-        self.tabla_filtrada.setRowCount(len(facturas) + 1)
-        self.tabla_filtrada.setItem(len(facturas), 0, QTableWidgetItem(""))
-        self.tabla_filtrada.setItem(len(facturas), 1, QTableWidgetItem(""))
-        self.tabla_filtrada.setItem(len(facturas), 2, QTableWidgetItem("TOTAL:"))
-        self.tabla_filtrada.setItem(len(facturas), 3, QTableWidgetItem(f"${total:,.0f} COP".replace(',', '.')))
-        
-        # Resaltar la fila de total
-        for col in range(self.tabla_filtrada.columnCount()):
-            item = self.tabla_filtrada.item(len(facturas), col)
-            if item:
-                item.setBackground(QColor(230, 230, 230))
-                if col == 2 or col == 3:  # Solo las celdas de texto
-                    font = item.font()
-                    font.setBold(True)
-                    item.setFont(font)
+        try:
+            # Desconectar la señal temporalmente para evitar múltiples llamadas
+            try:
+                self.tabla_filtrada.itemChanged.disconnect(self.guardar_cambios_celda)
+            except:
+                pass  # La señal no estaba conectada
+                
+            # Configurar el número de filas
+            self.tabla_filtrada.setRowCount(0)  # Limpiar la tabla
+            self.tabla_filtrada.setRowCount(len(facturas) + 1)  # +1 para la fila de total
+            
+            # Llenar la tabla con los datos de las facturas
+            for i, factura in enumerate(facturas):
+                if not isinstance(factura, dict):
+                    continue
+                    
+                try:
+                    # Fecha (no editable)
+                    fecha = factura.get('fecha', '')
+                    fecha_item = QTableWidgetItem(str(fecha))
+                    factura_id = factura.get('id')
+                    if factura_id is not None:
+                        fecha_item.setData(Qt.ItemDataRole.UserRole, factura_id)  # Store the ID for updates
+                    self.tabla_filtrada.setItem(i, 0, fecha_item)
+                    
+                    # Tipo (no editable)
+                    tipo = factura.get('tipo', '')
+                    tipo_item = QTableWidgetItem(str(tipo))
+                    self.tabla_filtrada.setItem(i, 1, tipo_item)
+                    
+                    # Descripción (editable)
+                    descripcion = factura.get('descripcion', '')
+                    desc_item = QTableWidgetItem(str(descripcion))
+                    desc_item.setFlags(desc_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                    self.tabla_filtrada.setItem(i, 2, desc_item)
+                    
+                    # Valor (editable)
+                    valor = float(factura.get('valor', 0))
+                    valor_formateado = f"${valor:,.0f} COP".replace(',', '.')
+                    valor_item = QTableWidgetItem(valor_formateado)
+                    valor_item.setData(Qt.ItemDataRole.UserRole + 1, valor)  # Store raw value for editing
+                    valor_item.setFlags(valor_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                    self.tabla_filtrada.setItem(i, 3, valor_item)
+                    
+                except Exception as e:
+                    logger.error(f"Error al mostrar factura {i}: {str(e)}", exc_info=True)
+                    continue
+            
+            # Calcular total
+            try:
+                total = sum(float(factura.get('valor', 0)) for factura in facturas if isinstance(factura, dict))
+            except Exception as e:
+                logger.error(f"Error al calcular el total: {str(e)}")
+                total = 0
+            
+            # Agregar fila de total
+            total_row = len(facturas)
+            
+            # Celda vacía
+            empty_item = QTableWidgetItem("")
+            empty_item.setFlags(empty_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tabla_filtrada.setItem(total_row, 0, empty_item)
+            
+            # Celda vacía
+            empty_item2 = QTableWidgetItem("")
+            empty_item2.setFlags(empty_item2.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.tabla_filtrada.setItem(total_row, 1, empty_item2)
+            
+            # Celda de TOTAL
+            total_label = QTableWidgetItem("TOTAL:")
+            total_label.setFlags(total_label.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            font = total_label.font()
+            font.setBold(True)
+            total_label.setFont(font)
+            self.tabla_filtrada.setItem(total_row, 2, total_label)
+            
+            # Celda de valor total
+            total_value = QTableWidgetItem(f"${total:,.0f} COP".replace(',', '.'))
+            total_value.setFlags(total_value.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            total_value.setFont(font)
+            self.tabla_filtrada.setItem(total_row, 3, total_value)
+            
+            # Resaltar la fila de total
+            for col in range(self.tabla_filtrada.columnCount()):
+                item = self.tabla_filtrada.item(total_row, col)
+                if item:
+                    item.setBackground(QColor(230, 230, 230))
+            
+        except Exception as e:
+            logger.error(f"Error en mostrar_resultados_filtrados: {str(e)}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Se produjo un error al mostrar los resultados: {str(e)}")
+        finally:
+            # Reconectar la señal al final, solo si no está ya conectada
+            try:
+                self.tabla_filtrada.itemChanged.disconnect()
+            except:
+                pass
+            self.tabla_filtrada.itemChanged.connect(self.guardar_cambios_celda)
 
     def _mostrar_vista_previa(self, facturas, tipo_archivo):
         """Mostrar una vista previa de las facturas a importar"""
@@ -2240,70 +2457,303 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             error_msg = f"Error al exportar a Excel: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            QMessageBox.critical(self, "Error", error_msg)
     
     def actualizar_boton_eliminar(self):
         """Actualizar el estado del botón de eliminar basado en la selección"""
-        seleccionados = self.tabla_facturas.selectedItems()
-        self.btn_eliminar.setEnabled(len(seleccionados) > 0)
-    
-    def actualizar_lista_facturas(self):
-        """Actualizar la tabla de facturas"""
-        self.tabla_facturas.setRowCount(len(self.facturas))
+        try:
+            # Verificar si el botón existe
+            if not hasattr(self, 'btn_eliminar'):
+                return
+                
+            # Obtener las filas seleccionadas
+            selected_items = self.tabla_facturas.selectedItems()
+            has_selection = len(selected_items) > 0
+            
+            # Actualizar el estado del botón
+            self.btn_eliminar.setEnabled(has_selection)
+            
+            # Debug
+            print(f"Botón de eliminar: {'Habilitado' if has_selection else 'Deshabilitado'}")
+            if has_selection:
+                rows = set(item.row() for item in selected_items)
+                print(f"Filas seleccionadas: {rows}")
+                
+        except Exception as e:
+            print(f"Error en actualizar_boton_eliminar: {str(e)}")
+            if hasattr(self, 'btn_eliminar'):
+                self.btn_eliminar.setEnabled(False)
         
-        for i, factura in enumerate(self.facturas):
-            # Agregar un elemento oculto para mantener el índice
-            self.tabla_facturas.setItem(i, 0, QTableWidgetItem(str(i)))  # Guardar el índice
+    def guardar_cambios_celda(self, item):
+        """Guardar los cambios realizados en una celda de la tabla"""
+        # Obtener la tabla que emitió la señal
+        tabla = self.sender()
+        if not isinstance(tabla, QTableWidget):
+            return
             
-            # Agregar los datos de la factura
-            self.tabla_facturas.setItem(i, 1, QTableWidgetItem(factura['fecha']))
-            self.tabla_facturas.setItem(i, 2, QTableWidgetItem(factura['tipo']))
-            self.tabla_facturas.setItem(i, 3, QTableWidgetItem(factura['descripcion']))
-            self.tabla_facturas.setItem(i, 4, QTableWidgetItem(f"${factura['valor']:,.0f} COP".replace(',', '.')))
+        try:
+            # Bloquear señales de la tabla temporalmente
+            tabla.blockSignals(True)
             
-            # Resaltar filas con valores altos
-            if factura['valor'] > 1000000:  # Resaltar facturas mayores a 1 millón
-                for col in range(1, 5):  # Solo las columnas visibles
-                    item = self.tabla_facturas.item(i, col)
-                    if item:
-                        item.setBackground(QColor(255, 230, 230))  # Rojo claro
+            # Determinar si es la tabla filtrada
+            es_tabla_filtrada = (tabla == self.tabla_filtrada)
+            
+            # Verificar si es una columna editable
+            if (es_tabla_filtrada and item.column() not in [2, 3]) or (not es_tabla_filtrada and item.column() not in [3, 4]):
+                return
+                
+            # Obtener el índice de la fila
+            row = item.row()
+            if row < 0 or row >= tabla.rowCount():
+                return
+            
+            # Obtener el ID de la factura
+            factura_id = None
+            id_item = tabla.item(row, 0)
+            if not id_item:
+                return
+                
+            if es_tabla_filtrada:
+                factura_id = id_item.data(Qt.ItemDataRole.UserRole)
+            else:
+                try:
+                    factura_id = int(id_item.text())
+                except (ValueError, AttributeError):
+                    return
+            
+            if not factura_id:
+                return
+            
+            # Buscar la factura correspondiente
+            factura = next((f for f in self.facturas if f.get('id') == factura_id), None)
+            if not factura:
+                return
+            
+            # Determinar el campo a actualizar
+            campo = None
+            nuevo_valor = None
+            
+            if (es_tabla_filtrada and item.column() == 2) or (not es_tabla_filtrada and item.column() == 3):
+                campo = 'descripcion'
+                nuevo_valor = item.text().strip()
+                
+                # Validar el valor
+                if not nuevo_valor:
+                    QMessageBox.warning(self, "Error", "La descripción no puede estar vacía")
+                    item.setText(factura.get('descripcion', ''))
+                    return
+                    
+            elif (es_tabla_filtrada and item.column() == 3) or (not es_tabla_filtrada and item.column() == 4):
+                campo = 'valor'
+                # Obtener el texto y limpiarlo
+                texto = item.text().strip()
+                # Eliminar caracteres de moneda y espacios
+                texto = texto.replace('$', '').replace('COP', '').replace('.', '').replace(' ', '')
+                # Reemplazar comas por puntos para el formato decimal
+                texto = texto.replace(',', '.')
+                try:
+                    # Convertir a float y redondear a 2 decimales
+                    nuevo_valor = round(float(texto), 2)
+                    if nuevo_valor < 0:
+                        raise ValueError("El valor no puede ser negativo")
+                except (ValueError, TypeError) as e:
+                    QMessageBox.warning(self, "Error", "El valor debe ser un número positivo")
+                    item.setText(f"${factura.get('valor', 0):,.0f} COP".replace(',', '.'))
+                    return
+            
+            # Si no se determinó un campo válido, salir
+            if campo is None or nuevo_valor is None:
+                return
+            
+            # Verificar si el valor realmente cambió
+            if campo in factura and factura[campo] == nuevo_valor:
+                return
+            
+            # Guardar el valor anterior para restaurar en caso de error
+            valor_anterior = factura[campo] if campo in factura else None
+            
+            try:
+                # Actualizar el valor en el diccionario de la factura
+                factura[campo] = nuevo_valor
+                
+                # Formatear el valor para mostrarlo en la tabla
+                if campo == 'valor':
+                    # Formatear el valor con separadores de miles y dos decimales
+                    valor_formateado = f"${nuevo_valor:,.2f} COP".replace(',', 'X').replace('.', ',').replace('X', '.')
+                    item.setText(valor_formateado)
+                
+                # Guardar los cambios en la base de datos
+                if self.db.actualizar_factura(
+                    factura_id=factura_id,
+                    fecha=factura['fecha'],
+                    tipo=factura['tipo'],
+                    descripcion=factura['descripcion'],
+                    valor=factura['valor']
+                ):
+                    # Mostrar mensaje de éxito
+                    self.statusBar().showMessage("Cambios guardados correctamente", 2000)
+                    
+                    # Resaltar la fila modificada temporalmente
+                    for col in range(tabla.columnCount()):
+                        cell_item = tabla.item(row, col)
+                        if cell_item:
+                            cell_item.setBackground(QColor(230, 255, 230))  # Verde claro
+                    
+                    # Programar la restauración del color después de 2 segundos
+                    QTimer.singleShot(2000, lambda r=row, t=tabla: self.restaurar_color_fila(r, 0, t))
+                    
+                    # Actualizar los datos y la UI sin causar señales adicionales
+                    self.cargar_datos(actualizar_ui=True)
+                    
+                else:
+                    # Si hay un error al guardar, restaurar el valor original
+                    raise Exception("No se pudo guardar el cambio en la base de datos")
+                    
+            except Exception as e:
+                # Restaurar el valor anterior en caso de error
+                if campo in factura and valor_anterior is not None:
+                    factura[campo] = valor_anterior
+                    if campo == 'descripcion':
+                        item.setText(str(valor_anterior))
+                    elif campo == 'valor':
+                        # Formatear el valor con separadores de miles y dos decimales
+                        valor_formateado = f"${float(valor_anterior):,.2f} COP".replace(',', 'X').replace('.', ',').replace('X', '.')
+                        item.setText(valor_formateado)
+                
+                QMessageBox.critical(self, "Error", str(e))
+                
+        finally:
+            # Restaurar las señales de la tabla
+            tabla.blockSignals(False)
+    
+    def restaurar_color_fila(self, row, col, tabla):
+        """
+        Restaurar el color de fondo de una fila después de una modificación
+        
+        Args:
+            row: Índice de la fila
+            col: Índice de la columna (no utilizado, se mantiene por compatibilidad)
+            tabla: Referencia a la tabla (self.tabla_facturas o self.tabla_filtrada)
+        """
+        if not tabla or row < 0 or row >= tabla.rowCount():
+            return
+            
+        # Obtener el ID de la factura de la fila
+        id_item = tabla.item(row, 0)
+        if not id_item:
+            return
+            
+        factura_id = None
+        if tabla == self.tabla_facturas:
+            try:
+                factura_id = int(id_item.text())
+            except (ValueError, AttributeError):
+                return
+        else:  # tabla_filtrada
+            factura_id = id_item.data(Qt.ItemDataRole.UserRole)
+            if not factura_id:
+                return
+        
+        # Buscar la factura correspondiente
+        factura = next((f for f in self.facturas if f.get('id') == factura_id), None)
+        if not factura:
+            return
+        
+        # Restaurar el color de fondo según el valor
+        color_fondo = QColor(255, 255, 255)  # Blanco por defecto
+        if factura.get('valor', 0) > 1000000:  # Resaltar facturas mayores a 1 millón
+            color_fondo = QColor(255, 230, 230)  # Rojo claro
+        
+        # Aplicar el color a todas las celdas de la fila
+        for col in range(tabla.columnCount()):
+            cell_item = tabla.item(row, col)
+            if cell_item:
+                cell_item.setBackground(color_fondo)
     
     def eliminar_facturas_seleccionadas(self):
         """Eliminar las facturas seleccionadas de la lista"""
+        print("Botón 'Eliminar seleccionadas' presionado")  # Debug
+        
         # Obtener las filas seleccionadas (sin duplicados)
+        selected_ranges = self.tabla_facturas.selectedRanges()
         filas_seleccionadas = set()
-        for item in self.tabla_facturas.selectedItems():
-            filas_seleccionadas.add(item.row())
+        
+        print(f"Rangos seleccionados: {selected_ranges}")  # Debug
+        
+        for range_ in selected_ranges:
+            filas_seleccionadas.update(range(range_.topRow(), range_.bottomRow() + 1))
+        
+        print(f"Filas seleccionadas: {filas_seleccionadas}")  # Debug
         
         if not filas_seleccionadas:
-            QMessageBox.warning(self, "Eliminar Facturas", "No hay facturas seleccionadas para eliminar.")
+            print("No hay filas seleccionadas")  # Debug
+            QMessageBox.warning(self, "Eliminar Facturas", "No hay filas seleccionadas para eliminar.")
+            return
+        
+        # Obtener los IDs de las facturas seleccionadas
+        facturas_a_eliminar = []
+        for fila in filas_seleccionadas:
+            if 0 <= fila < self.tabla_facturas.rowCount():
+                id_item = self.tabla_facturas.item(fila, 0)  # ID está en la columna 0 (oculta)
+                print(f"Fila {fila}: id_item = {id_item}")  # Debug
+                if id_item is not None:
+                    try:
+                        factura_id = int(id_item.text())
+                        facturas_a_eliminar.append(factura_id)
+                        print(f"ID de factura encontrado: {factura_id}")  # Debug
+                    except (ValueError, AttributeError) as e:
+                        print(f"Error al obtener ID de factura: {e}")  # Debug
+                        continue
+        
+        print(f"Facturas a eliminar: {facturas_a_eliminar}")  # Debug
+        
+        if not facturas_a_eliminar:
+            print("No se encontraron IDs de facturas válidas")  # Debug
+            QMessageBox.warning(self, "Eliminar Facturas", "No se pudieron identificar las facturas a eliminar.")
             return
         
         # Confirmar eliminación
         confirmacion = QMessageBox.question(
             self,
             "Confirmar Eliminación",
-            f"¿Está seguro de que desea eliminar {len(filas_seleccionadas)} factura(s) seleccionada(s)?",
+            f"¿Está seguro de que desea eliminar {len(facturas_a_eliminar)} factura(s) seleccionada(s)?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
         if confirmacion == QMessageBox.StandardButton.Yes:
-            # Ordenar las filas de mayor a menor para evitar problemas con los índices al eliminar
-            filas_ordenadas = sorted(filas_seleccionadas, reverse=True)
-            
-            # Eliminar las facturas de la lista
-            for fila in filas_ordenadas:
-                if 0 <= fila < len(self.facturas):
-                    self.facturas.pop(fila)
-            
-            # Guardar los cambios
-            if self.guardar_datos():
+            print(f"Confirmada eliminación de {len(facturas_a_eliminar)} facturas")  # Debug
+            # Eliminar las facturas de la base de datos
+            eliminaciones_exitosas = 0
+            try:
+                for factura_id in facturas_a_eliminar:
+                    print(f"Intentando eliminar factura con ID: {factura_id}")  # Debug
+                    if self.db.eliminar_factura(factura_id):
+                        eliminaciones_exitosas += 1
+                        print(f"Factura {factura_id} eliminada correctamente")  # Debug
+                    else:
+                        print(f"No se pudo eliminar la factura {factura_id}")  # Debug
+                
                 # Actualizar la interfaz
-                self.actualizar_lista_facturas()
-                self.actualizar_resumen()
-                self.statusBar().showMessage(f"Se eliminaron {len(filas_seleccionadas)} factura(s) correctamente.", 3000)
-                logger.info(f"Se eliminaron {len(filas_seleccionadas)} facturas")
+                print("Recargando datos...")  # Debug
+                self.cargar_datos(actualizar_ui=True)
+                
+                mensaje = f"Se eliminaron {eliminaciones_exitosas} de {len(facturas_a_eliminar)} factura(s) correctamente."
+                self.statusBar().showMessage(mensaje, 5000)  # 5 segundos
+                print(mensaje)  # Debug
+                logger.info(mensaje)
+                
+                # Mostrar mensaje si no se pudieron eliminar todas las facturas
+                if eliminaciones_exitosas < len(facturas_a_eliminar):
+                    QMessageBox.warning(
+                        self,
+                        "Advertencia",
+                        f"Solo se pudieron eliminar {eliminaciones_exitosas} de {len(facturas_a_eliminar)} facturas seleccionadas."
+                    )
+                
+            except Exception as e:
+                error_msg = f"Error al eliminar las facturas: {str(e)}"
+                print(error_msg)  # Debug
+                logger.error(error_msg, exc_info=True)
+                QMessageBox.critical(self, "Error", error_msg)
     
     def confirmar_limpiar_todo(self):
         """Mostrar diálogo de confirmación para limpiar todos los datos"""
