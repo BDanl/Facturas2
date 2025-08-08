@@ -39,19 +39,23 @@ except ImportError as e:
     QMessageBox.critical(None, "Error", "Error al importar dependencias de Excel. Asegúrate de tener openpyxl instalado.")
     sys.exit(1)
 
-# Configuración de logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('facturas_qt.log'),
-        logging.StreamHandler()
-    ]
-)
+    # Crear directorio de datos si no existe
+    data_dir = Path.home() / 'FacturasApp'
+    data_dir.mkdir(exist_ok=True, parents=True)
+    
+    # Configurar logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(data_dir / 'facturas_qt.log'),
+            logging.StreamHandler()
+        ]
+    )
 logger = logging.getLogger(__name__)
 
 # Configuración de la aplicación
-CONFIG_FILE = 'config.ini'
+CONFIG_FILE = str(Path.home() / 'FacturasApp' / 'config.ini')
 
 def get_config():
     """Obtener la configuración de la aplicación"""
@@ -129,7 +133,7 @@ class MainWindow(QMainWindow):
     
     def _migrar_datos_desde_json(self):
         """Migra los datos desde el archivo JSON antiguo a la base de datos SQLite si es necesario."""
-        json_path = Path("facturas_qt.json")
+        json_path = Path.home() / "FacturasApp" / "facturas_qt.json"
         if json_path.exists():
             try:
                 # Verificar si ya hay datos en la base de datos
@@ -2440,10 +2444,10 @@ class MainWindow(QMainWindow):
     
     def cargar_preferencia_tema(self):
         """Cargar la preferencia de tema desde el archivo de configuración"""
-        config_path = "config.json"
+        config_path = self.data_dir / "tema_config.json"
         try:
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
                     config = json.load(f)
                     if 'tema_oscuro' in config:
                         self.tema_oscuro = config['tema_oscuro']
@@ -2453,15 +2457,16 @@ class MainWindow(QMainWindow):
     
     def guardar_preferencia_tema(self):
         """Guardar la preferencia de tema en el archivo de configuración"""
-        config_path = "config.json"
+        config_path = self.data_dir / "tema_config.json"
         try:
             config = {}
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    try:
+            if config_path.exists():
+                try:
+                    with open(config_path, 'r', encoding='utf-8') as f:
                         config = json.load(f)
-                    except json.JSONDecodeError:
-                        config = {}
+                except (json.JSONDecodeError, Exception) as e:
+                    logger.warning(f"Error al leer el archivo de configuración del tema: {str(e)}")
+                    config = {}
             
             config['tema_oscuro'] = self.tema_oscuro
             

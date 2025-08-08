@@ -59,8 +59,8 @@ Para crear un ejecutable de la aplicación que pueda ser distribuido y usado sin
 
 1. Abre una terminal en la carpeta del proyecto
 2. Ejecuta el siguiente comando:
-   ```bash
-   python -m PyInstaller --onefile --windowed --name="GestorFacturas" --add-data="database.py;." --add-data="config.ini;." --add-data="config.json;." --distpath="dist_standalone" --workpath="build_temp" facturas2.py
+   ```powershell
+   py -m PyInstaller --onefile --windowed --name="GestorFacturas" --add-data="database.py;." --add-data="config.ini;." --distpath="dist_standalone" --workpath="build_temp" facturas2.py
    ```
 
 ### Ubicación del ejecutable
@@ -75,15 +75,23 @@ Facturas2/dist_standalone/GestorFacturas.exe
 Si realizas modificaciones al código:
 
 1. Guarda todos los cambios
-2. Elimina las carpetas de compilación anteriores (opcional pero recomendado):
-   ```bash
-   Remove-Item -Recurse -Force build, build_temp, dist_standalone
+2. (Opcional) Para evitar problemas, elimina las carpetas de compilación anteriores:
+   ```powershell
+   Remove-Item -Recurse -Force build, build_temp, dist_standalone -ErrorAction SilentlyContinue
    ```
 3. Vuelve a ejecutar el comando de generación del ejecutable
 
 ### Notas importantes
 
-- La primera vez que se ejecute, creará automáticamente una carpeta `FacturasApp` en el directorio del usuario para almacenar los datos.
+- La primera vez que se ejecute, creará automáticamente una carpeta `FacturasApp` en tu directorio de usuario (`%USERPROFILE%\FacturasApp`) para almacenar:
+  - Base de datos SQLite (`facturas.db`)
+  - Archivo de configuración (`config.ini`)
+  - Archivos de log (`facturas_qt.log`)
+  - Cualquier archivo JSON de respaldo de migración
+
+- El ejecutable es completamente independiente y no requiere instalación de Python ni dependencias adicionales.
+
+- Para distribuir la aplicación, solo necesitas compartir el archivo `GestorFacturas.exe` del directorio `dist_standalone`.
 - No es necesario tener Python instalado en la computadora donde se ejecute el programa.
 
 ## Estructura del Proyecto
