@@ -40,8 +40,20 @@ class EditableDelegate(QStyledItemDelegate):
     def createEditor(self, parent, option, index):
         """Sobrescribir para crear el editor solo para columnas editables"""
         if index.column() in self.editable_columns:
-            return super().createEditor(parent, option, index)
+            editor = super().createEditor(parent, option, index)
+            # Aumentar el tamaño mínimo del editor
+            if isinstance(editor, QLineEdit):
+                editor.setMinimumHeight(40)  # Altura de 40 píxeles
+                editor.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.MinimumExpanding)
+            return editor
         return None
+    
+    def updateEditorGeometry(self, editor, option, index):
+        """Actualizar la geometría del editor para que ocupe más espacio"""
+        if index.column() in self.editable_columns:
+            # Aumentar la altura del área de edición
+            option.rect.setHeight(max(40, option.rect.height()))
+            editor.setGeometry(option.rect)
     
     def setEditorData(self, editor, index):
         """Cargar datos en el editor"""
@@ -823,8 +835,15 @@ class MainWindow(QMainWindow):
         except:
             pass
             
+        # Cerrar cualquier editor activo
+        self.tabla_facturas.closePersistentEditor(self.tabla_facturas.currentItem())
+            
         self.tabla_facturas.setRowCount(len(self.facturas))
         
+        # Establecer altura de fila para mejor legibilidad
+        for i in range(len(self.facturas)):
+            self.tabla_facturas.setRowHeight(i, 30)  # Aumentar altura de fila a 30 píxeles
+            
         for i, factura in enumerate(self.facturas):
             # Columna 0 oculta para el ID de la factura
             item_id = QTableWidgetItem(str(factura.get('id', i)))
@@ -1087,6 +1106,10 @@ class MainWindow(QMainWindow):
     def mostrar_resultados_filtrados(self, facturas):
         """Mostrar las facturas filtradas en la tabla"""
         try:
+            # Cerrar cualquier editor activo antes de actualizar
+            if self.tabla_filtrada.currentItem() is not None:
+                self.tabla_filtrada.closePersistentEditor(self.tabla_filtrada.currentItem())
+                
             # Desconectar la señal temporalmente para evitar múltiples llamadas
             try:
                 self.tabla_filtrada.itemChanged.disconnect(self.guardar_cambios_celda)
@@ -1097,11 +1120,15 @@ class MainWindow(QMainWindow):
             self.tabla_filtrada.setRowCount(0)  # Limpiar la tabla
             self.tabla_filtrada.setRowCount(len(facturas) + 1)  # +1 para la fila de total
             
+            # Establecer altura de fila para mejor legibilidad
+            for i in range(len(facturas) + 1):
+                self.tabla_filtrada.setRowHeight(i, 30)  # Aumentar altura de fila a 30 píxeles
+            
             # Llenar la tabla con los datos de las facturas
             for i, factura in enumerate(facturas):
                 if not isinstance(factura, dict):
                     continue
-                    
+                
                 try:
                     # Fecha (no editable)
                     fecha = factura.get('fecha', '')
