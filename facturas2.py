@@ -337,8 +337,16 @@ class MainWindow(QMainWindow):
         
         # Tipo de gasto
         self.cmb_tipo_gasto = QComboBox()
-        self.cmb_tipo_gasto.addItems(["Mercado", "Transporte", "Compra tienda", 
-                                    "Farmacia", "Varios", "Gastos urgentes"])
+        # Cargar tipos de gasto desde la base de datos
+        try:
+            tipos_gasto = self.db.obtener_tipos_gasto()
+            for tipo in tipos_gasto:
+                self.cmb_tipo_gasto.addItem(tipo['nombre'])
+        except Exception as e:
+            # En caso de error, cargar valores por defecto
+            logging.error(f"Error al cargar tipos de gasto: {str(e)}")
+            self.cmb_tipo_gasto.addItems(["Mercado", "Transporte", "Compra tienda", 
+                                        "Farmacia", "Varios", "Gastos urgentes"])
         
         # Descripción
         self.txt_descripcion = QLineEdit()
@@ -527,8 +535,15 @@ class MainWindow(QMainWindow):
         # Filtro por tipo de gasto
         self.combo_filtro_tipo = QComboBox()
         self.combo_filtro_tipo.addItem("Todos los tipos", None)
-        self.combo_filtro_tipo.addItems(["Mercado", "Transporte", "Compra tienda", 
-                                       "Farmacia", "Varios", "Gastos urgentes"])
+        try:
+            tipos_gasto = self.db.obtener_tipos_gasto()
+            for tipo in tipos_gasto:
+                self.combo_filtro_tipo.addItem(tipo['nombre'])
+        except Exception as e:
+            # En caso de error, cargar valores por defecto
+            logging.error(f"Error al cargar tipos de gasto en filtros: {str(e)}")
+            self.combo_filtro_tipo.addItems(["Mercado", "Transporte", "Compra tienda", 
+                                          "Farmacia", "Varios", "Gastos urgentes"])
         self.combo_filtro_tipo.currentIndexChanged.connect(self.aplicar_filtros)
         
         # Botón para limpiar filtros

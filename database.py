@@ -105,6 +105,12 @@ class Database:
             ('Servicios', 'Luz, agua, internet, etc.', '#96CEB4'),
             ('Salud', 'Gastos médicos', '#FFEEAD'),
             ('Educación', 'Cursos, libros, etc.', '#D4A373'),
+            ('Gastos Básicos', 'Gastos básicos del hogar', '#9B5DE5'),
+            ('Ocio', 'Actividades de ocio y diversión', '#FF9F1C'),
+            ('Reparaciones', 'Reparaciones y mantenimiento', '#2EC4B6'),
+            ('Préstamo', 'Pagos de préstamos', '#E71D36'),
+            ('Ahorro', 'Ahorros e inversiones', '#2EC4B6'),
+            ('Predial', 'Impuesto predial', '#6A4C93'),
             ('Gastos fijos', 'Gastos fijos mensuales', '#9B5DE5'),
             ('Otros', 'Otros gastos', '#8B8C89')
         ]
