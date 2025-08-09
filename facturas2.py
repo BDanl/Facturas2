@@ -77,24 +77,64 @@ def check_single_instance():
     
     # Crear un mutex con nombre
     mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
-    last_error = ctypes.get_last_error()
+    
+    # Verificar si el mutex ya existía
+    last_error = ctypes.windll.kernel32.GetLastError()
     
     if last_error == 183:  # ERROR_ALREADY_EXISTS
-        # Si ya existe, intentar activar la ventana existente
+        # Obtener el handle de la ventana existente
         hwnd = ctypes.windll.user32.FindWindowW(None, "Gestor de Facturas")
         if hwnd:
-            # Traer al frente y restaurar si está minimizada
-            ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE = 9
+            # Si la ventana está minimizada, restaurarla
+            if ctypes.windll.user32.IsIconic(hwnd):
+                ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE = 9
+            
+            # Traer al frente
             ctypes.windll.user32.SetForegroundWindow(hwnd)
+            
+            # Activar la ventana
+            ctypes.windll.user32.SetActiveWindow(hwnd)
+            
             # Traer al frente de las demás ventanas
-            ctypes.windll.user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0, 0x0001 | 0x0002)
+            ctypes.windll.user32.SetWindowPos(
+                hwnd,  # hWnd
+                -1,    # hWndInsertAfter (HWND_TOPMOST)
+                0, 0, 0, 0,  # x, y, cx, cy (ignorados)
+                0x0001 | 0x0002  # SWP_NOMOVE | SWP_NOSIZE
+            )
         return False
+    
+    # Configurar para que el mutex no se cierre automáticamente al salir
+    ctypes.windll.kernel32.SetHandleInformation(mutex, 1, 1)
     return True
 
 def main():
     # Verificar si ya hay una instancia en ejecución
-    if not check_single_instance():
-        logger.info("Intento de abrir una segunda instancia. Saliendo...")
+    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "Global\\GestorFacturas_SingleInstance")
+    
+    # Verificar si el mutex ya existía
+    error = ctypes.windll.kernel32.GetLastError()
+    
+    if error == 183:  # ERROR_ALREADY_EXISTS
+        # Encontrar la ventana existente
+        hwnd = ctypes.windll.user32.FindWindowW(None, "Gestor de Facturas")
+        if hwnd:
+            # Restaurar si está minimizada
+            if ctypes.windll.user32.IsIconic(hwnd):
+                ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE = 9
+            
+            # Traer al frente y activar
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+            ctypes.windll.user32.SetActiveWindow(hwnd)
+            
+            # Forzar el enfoque
+            ctypes.windll.user32.BringWindowToTop(hwnd)
+            ctypes.windll.user32.SetFocus(hwnd)
+            
+            # Mensaje de depuración
+            logger.warning("Se intentó abrir una segunda instancia. Redirigiendo a la ventana existente.")
+        
+        # Salir de la nueva instancia
         sys.exit(0)
     
 # Configuración de directorios de la aplicación
@@ -544,8 +584,18 @@ class MainWindow(QMainWindow):
         
         # Menú desplegable para importar desde diferentes formatos
         self.menu_importar = QPushButton("Importar Facturas ▼")
+        self.menu_importar.setObjectName("menu_importar")
         self.menu_importar.setToolTip("Importar facturas desde diferentes formatos")
-        self.menu_importar.setFixedSize(150, 32)
+        self.menu_importar.setMinimumWidth(400)  # Ancho mínimo de 350 píxeles
+        self.menu_importar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        self.menu_importar.setStyleSheet("""
+            QPushButton {
+                padding: 8px 15px;
+                margin: 2px;
+                min-width: 400px;
+                font-size: 12px;
+            }
+        """)
         
         # Crear menú desplegable
         self.import_menu = QMenu(self)
@@ -585,15 +635,36 @@ class MainWindow(QMainWindow):
         
         # Botón para limpiar todo
         self.btn_limpiar_todo = QPushButton("Limpiar Todo")
+        self.btn_limpiar_todo.setObjectName("btn_limpiar_todo")
         self.btn_limpiar_todo.clicked.connect(self.confirmar_limpiar_todo)
         self.btn_limpiar_todo.setToolTip("Eliminar todas las facturas")
-        self.btn_limpiar_todo.setStyleSheet("background-color: #f8d7da; color: #721c24;")
+        self.btn_limpiar_todo.setMinimumWidth(400)  # Ancho mínimo de 350 píxeles
+        self.btn_limpiar_todo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        self.btn_limpiar_todo.setStyleSheet("""
+            QPushButton {
+                padding: 8px 15px;
+                margin: 2px;
+                min-width: 400px;
+                font-size: 12px;
+            }
+        """)
         btn_layout.addWidget(self.btn_limpiar_todo)
         
         # Botón para exportar a Excel
         self.btn_exportar = QPushButton("Exportar a Excel")
+        self.btn_exportar.setObjectName("btn_exportar")
         self.btn_exportar.clicked.connect(self.exportar_a_excel)
         self.btn_exportar.setToolTip("Exportar facturas a un archivo Excel")
+        self.btn_exportar.setMinimumWidth(400)  # Ancho mínimo de 350 píxeles
+        self.btn_exportar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        self.btn_exportar.setStyleSheet("""
+            QPushButton {
+                padding: 8px 15px;
+                margin: 2px;
+                min-width: 400px;
+                font-size: 12px;
+            }
+        """)
         btn_layout.addWidget(self.btn_exportar)
         
         # Layout para la tabla y botón de eliminar seleccionadas
@@ -1085,7 +1156,12 @@ class MainWindow(QMainWindow):
             for col in range(self.tabla_filtrada.columnCount()):
                 item = self.tabla_filtrada.item(total_row, col)
                 if item:
-                    item.setBackground(QColor(230, 230, 230))
+                    if self.tema_oscuro:
+                        item.setBackground(QColor(100, 100, 100))  # Gris oscuro para el tema oscuro
+                        item.setForeground(QColor(255, 255, 255))  # Texto en blanco para mejor contraste
+                    else:
+                        item.setBackground(QColor(230, 230, 230))  # Gris claro para el tema claro
+                        item.setForeground(QColor(0, 0, 0))  # Texto en negro
             
         except Exception as e:
             logger.error(f"Error en mostrar_resultados_filtrados: {str(e)}", exc_info=True)
@@ -2934,353 +3010,437 @@ class MainWindow(QMainWindow):
         self.guardar_preferencia_tema()
     
     def aplicar_tema(self):
-        """Aplicar el tema seleccionado a toda la aplicación"""
+        """Aplicar el tema seleccionado a toda la aplicación con diseño moderno"""
+        # Establecer ancho mínimo para los botones de acción
+        if hasattr(self, 'menu_importar') and hasattr(self, 'btn_limpiar_todo') and hasattr(self, 'btn_exportar'):
+            for btn in [self.menu_importar, self.btn_limpiar_todo, self.btn_exportar]:
+                btn.setMinimumWidth(150)  # Ancho mínimo de 150 píxeles
+                btn.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred)
+                
         if self.tema_oscuro:
-            # Estilo para modo oscuro (negros y rosados)
+            # Estilo moderno para modo oscuro (el que ya tenías)
             self.setStyleSheet("""
                 /* Estilos generales */
-                QMainWindow, QDialog, QWidget, QTabWidget::pane, QTabBar::tab:selected {
-                    background-color: #121212;
-                    color: #f8f9fa;
+                QMainWindow, QDialog, QWidget {
+                    background-color: #1a1a2e;
+                    color: #e6e6e6;
+                    font-family: 'Segoe UI', Arial, sans-serif;
                 }
                 
-                /* Pestañas */
-                QTabBar::tab {
-                    background: #1e1e1e;
-                    color: #f8f9fa;
-                    padding: 8px 20px;
-                    border: 1px solid #ff4081;
-                    border-bottom: none;
-                    border-top-left-radius: 4px;
-                    border-top-right-radius: 4px;
-                    margin-right: 2px;
-                }
-                
-                QTabBar::tab:selected {
-                    background: #ff4081;
-                    color: #121212;
+                /* Barra de título */
+                QLabel[title="true"] {
+                    font-size: 24px;
                     font-weight: bold;
-                    border-bottom: 1px solid #ff4081;
+                    color: #ffffff;
+                    padding: 10px;
                 }
-                
-                QTabBar::tab:!selected {
-                    margin-top: 2px;
-                    background: #2a2a2a;
-                }
-                
-                /* Botones */
-                QPushButton {
-                    background-color: #2a2a2a;
-                    color: #f8f9fa;
-                    border: 1px solid #ff4081;
-                    padding: 5px 15px;
-                    border-radius: 4px;
-                }
-                
-                QPushButton:hover {
-                    background-color: #ff4081;
-                    color: #121212;
-                }
-                
-                QPushButton:pressed {
-                    background-color: #c2185b;
-                }
-                
-                /* Campos de entrada */
-                QLineEdit, QTextEdit, QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox {
-                    background-color: #1e1e1e;
-                    color: #f8f9fa;
-                    border: 1px solid #ff4081;
-                    padding: 5px;
-                    border-radius: 4px;
-                    selection-background-color: #ff4081;
-                }
-                
-                /* Tablas */
-                QTableWidget {
-                    background-color: #121212;
-                    color: #f8f9fa;
-                    gridline-color: #2a2a2a;
-                    border: 1px solid #2a2a2a;
-                    alternate-background-color: #1a1a1a;
-                }
-                
-                QTableWidget::item {
-                    padding: 5px;
-                    border-bottom: 1px solid #2a2a2a;
-                }
-                
-                QTableWidget::item:selected {
-                    background-color: #ff4081;
-                    color: #121212;
-                }
-                
-                QHeaderView::section {
-                    background-color: #1e1e1e;
-                    color: #f8f9fa;
-                    padding: 5px;
-                    border: 1px solid #2a2a2a;
-                    border-top: none;
-                    border-bottom: 2px solid #ff4081;
-                }
-                
-                /* Grupos */
-                QGroupBox {
-                    border: 1px solid #ff4081;
-                    border-radius: 4px;
-                    margin-top: 10px;
-                    padding-top: 15px;
-                    color: #f8f9fa;
-                }
-                
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 5px;
-                    color: #ff80ab;
-                }
-                
-                /* Barra de estado */
-                QStatusBar {
-                    background-color: #1e1e1e;
-                    color: #f8f9fa;
-                    border-top: 1px solid #2a2a2a;
-                }
-                
-                /* Diálogos */
-                QMessageBox {
-                    background-color: #121212;
-                    color: #f8f9fa;
-                }
-                
-                QMessageBox QLabel {
-                    color: #f8f9fa;
-                }
-                
-                QMessageBox QPushButton {
-                    min-width: 80px;
-                    background-color: #2a2a2a;
-                    color: #f8f9fa;
-                    border: 1px solid #ff4081;
-                }
-                
-                QMessageBox QPushButton:hover {
-                    background-color: #ff4081;
-                    color: #121212;
-                }
-                
-                /* Botones de acción */
-                QPushButton#btn_limpiar_todo, QPushButton#btn_eliminar {
-                    background-color: #c2185b;
-                    color: white;
-                    border: 1px solid #9c1352;
-                }
-                
-                QPushButton#btn_limpiar_todo:hover, QPushButton#btn_eliminar:hover {
-                    background-color: #e91e63;
-                }
-                
-                QPushButton#btn_limpiar_todo:pressed, QPushButton#btn_eliminar:pressed {
-                    background-color: #880e4f;
-                }
-                
-                /* Resaltado de filas */
-                QTableWidget::item[valor_alto="true"] {
-                    background-color: #4a1a2a;
-                    color: #ff80ab;
-                }
-                
-                /* Estilos para menús desplegables */
-                QMenu {
-                    background-color: #1e1e1e;
-                    color: #f8f9fa;
-                    border: 1px solid #ff4081;
-                    padding: 5px;
-                }
-                
-                QMenu::item {
-                    padding: 5px 15px;
-                }
-                
-                QMenu::item:selected {
-                    background-color: #ff4081;
-                    color: #121212;
-                }
-                
-                QMenu::item:disabled {
-                    color: #6c757d;
-                }
-            """)
-            # Cambiar ícono a luna (modo oscuro activado)
-            self.btn_tema.setIcon(self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_TitleBarNormalButton')))
+            
+            /* Contenedor de botones */
+            QHBoxLayout {
+                spacing: 10px;
+            }
+            
+            /* Botones principales - tamaño uniforme */
+            QPushButton#menu_importar,
+            QPushButton#btn_limpiar_todo,
+            QPushButton#btn_exportar {
+                min-width: 120px;
+                max-width: 120px;
+                padding: 8px 10px;
+                margin: 0;
+            }
+            
+            /* Botón Importar Facturas */
+            QPushButton#menu_importar {
+                background-color: #0f3460;
+                color: #ffffff;
+            }
+            
+            /* Botón Exportar a Excel */
+            QPushButton#btn_exportar {
+                background-color: #0f3460;
+                color: #ffffff;
+            }
+            
+            /* Botón Limpiar Todo */
+            QPushButton#btn_limpiar_todo {
+                background-color: #f8d7da;
+                color: #721c24;
+                border: 1px solid #f5c6cb;
+            }
+            
+            /* Estados de los botones */
+            QPushButton#menu_importar:hover,
+            QPushButton#btn_exportar:hover {
+                background-color: #1a4b8c;
+            }
+            
+            QPushButton#menu_importar:pressed,
+            QPushButton#btn_exportar:pressed {
+                background-color: #0d2b4e;
+            }
+            
+            /* Estados específicos para Limpiar Todo */
+            QPushButton#btn_limpiar_todo:hover {
+                background-color: #f5c6cb;
+                border-color: #f1b0b7;
+            }
+            
+            QPushButton#btn_limpiar_todo:pressed {
+                background-color: #f1b0b7;
+                border-color: #ea99a3;
+            }
+            
+            /* Tarjetas (QGroupBox) */
+            QGroupBox {
+                background-color: #16213e;
+                border: 1px solid #0f3460;
+                border-radius: 12px;
+                margin-top: 15px;
+                padding-top: 25px;
+                color: #e6e6e6;
+            }
+            
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 0 8px;
+                color: #e94560;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            
+            /* Botones generales */
+            QPushButton {
+                background-color: #0f3460;
+                color: #ffffff;
+                border: none;
+                padding: 8px 20px;
+                border-radius: 8px;
+                font-weight: 500;
+                min-width: 100px;
+            }
+            
+            QPushButton:hover {
+                background-color: #1a4b8c;
+            }
+            
+            QPushButton:pressed {
+                background-color: #0d2b4e;
+            }
+            
+            /* Botón Guardar */
+            QPushButton#btn_guardar {
+                background-color: #2d4263;
+            }
+            
+            QPushButton#btn_guardar:hover {
+                background-color: #1e2f4a;
+            }
+            
+            /* Campos de entrada */
+            QLineEdit, QTextEdit, QComboBox, QDateEdit {
+                background-color: #16213e;
+                color: #e6e6e6;
+                border: 1px solid #0f3460;
+                padding: 8px;
+                border-radius: 6px;
+                selection-background-color: #e94560;
+                selection-color: #ffffff;
+            }
+            
+            /* Pestañas */
+            QTabWidget::pane {
+                border: none;
+                background: #16213e;
+            }
+            
+            QTabBar::tab {
+                background: #1a1a2e;
+                color: #a1a1a1;
+                padding: 10px 20px;
+                border: none;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                margin-right: 4px;
+                font-weight: 500;
+            }
+            
+            QTabBar::tab:selected {
+                background: #0f3460;
+                color: #ffffff;
+            }
+            
+            QTabBar::tab:!selected {
+                margin-top: 4px;
+            }
+            
+            /* Tablas */
+            QTableWidget {
+                background-color: #16213e;
+                color: #e6e6e6;
+                gridline-color: #0f3460;
+                border: 1px solid #0f3460;
+                border-radius: 8px;
+                alternate-background-color: #1a1a2e;
+            }
+            
+            QTableWidget::item {
+                padding: 8px;
+            }
+            
+            QTableWidget::item:selected {
+                background-color: #e94560;
+                color: #ffffff;
+            }
+            
+            QHeaderView::section {
+                background-color: #0f3460;
+                color: #ffffff;
+                padding: 8px;
+                border: none;
+                font-weight: bold;
+            }
+            
+            /* Barra de estado */
+            QStatusBar {
+                background-color: #0f3460;
+                color: #ffffff;
+                border-top: 1px solid #0d2b4e;
+            }
+        """)
         else:
-            # Estilo para modo claro (blancos y azules)
+            # Estilo moderno para modo claro - versión clara del modo oscuro
             self.setStyleSheet("""
                 /* Estilos generales */
-                QMainWindow, QDialog, QWidget, QTabWidget::pane, QTabBar::tab:selected {
-                    background-color: #f8f9fa;
-                    color: #212529;
+                QMainWindow, QDialog, QWidget {
+                    background-color: #f0f2f5;
+                    color: #333333;
+                    font-family: 'Segoe UI', Arial, sans-serif;
                 }
                 
-                /* Pestañas */
-                QTabBar::tab {
-                    background: #e9ecef;
-                    color: #495057;
-                    padding: 8px 20px;
-                    border: 1px solid #0d6efd;
-                    border-bottom: none;
-                    border-top-left-radius: 4px;
-                    border-top-right-radius: 4px;
-                    margin-right: 2px;
-                }
-                
-                QTabBar::tab:selected {
-                    background: #0d6efd;
-                    color: white;
+                /* Barra de título */
+                QLabel[title="true"] {
+                    font-size: 24px;
                     font-weight: bold;
-                    border-bottom: 1px solid #0d6efd;
+                    color: #2c3e50;
+                    padding: 10px;
                 }
-                
-                QTabBar::tab:!selected {
-                    margin-top: 2px;
-                    background: #e9ecef;
+            
+            /* Contenedor de botones */
+            QHBoxLayout {
+                spacing: 10px;
+            }
+            
+            /* Botones principales - tamaño uniforme */
+            QPushButton#menu_importar,
+            QPushButton#btn_limpiar_todo,
+            QPushButton#btn_exportar {
+                min-width: 120px;
+                max-width: 120px;
+                padding: 8px 10px;
+                margin: 0;
+            }
+            
+                /* Botón Importar Facturas */
+                QPushButton#menu_importar {
+                    background-color: #3498db;
+                    color: #ffffff;
                 }
-                
-                /* Botones */
-                QPushButton {
-                    background-color: #e9ecef;
-                    color: #212529;
-                    border: 1px solid #ced4da;
-                    padding: 5px 15px;
-                    border-radius: 4px;
-                }
-                
-                QPushButton:hover {
-                    background-color: #0d6efd;
-                    color: white;
-                    border-color: #0b5ed7;
-                }
-                
-                QPushButton:pressed {
-                    background-color: #0b5ed7;
-                }
-                
-                /* Campos de entrada */
-                QLineEdit, QTextEdit, QComboBox, QDateEdit, QSpinBox, QDoubleSpinBox {
-                    background-color: white;
-                    color: #212529;
-                    border: 1px solid #ced4da;
-                    padding: 5px;
-                    border-radius: 4px;
-                    selection-background-color: #0d6efd;
-                    selection-color: white;
-                }
-                
-                /* Tablas */
-                QTableWidget {
-                    background-color: white;
-                    color: #212529;
-                    gridline-color: #dee2e6;
-                    border: 1px solid #dee2e6;
-                    alternate-background-color: #f8f9fa;
-                }
-                
-                QTableWidget::item {
-                    padding: 5px;
-                    border-bottom: 1px solid #dee2e6;
-                }
-                
-                QTableWidget::item:selected {
-                    background-color: #0d6efd;
-                    color: white;
-                }
-                
-                QHeaderView::section {
-                    background-color: #f1f3f5;
-                    color: #212529;
-                    padding: 5px;
-                    border: 1px solid #dee2e6;
-                    border-top: none;
-                    border-bottom: 2px solid #0d6efd;
-                }
-                
-                /* Grupos */
-                QGroupBox {
-                    border: 1px solid #dee2e6;
-                    border-radius: 4px;
-                    margin-top: 10px;
-                    padding-top: 15px;
-                    color: #212529;
-                }
-                
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 5px;
-                    color: #0d6efd;
-                }
-                
-                /* Barra de estado */
-                QStatusBar {
-                    background-color: #e9ecef;
-                    color: #212529;
-                    border-top: 1px solid #dee2e6;
-                }
-                
-                /* Diálogos */
-                QMessageBox {
-                    background-color: white;
-                    color: #212529;
-                }
-                
-                QMessageBox QLabel {
-                    color: #212529;
-                }
-                
-                QMessageBox QPushButton {
-                    min-width: 80px;
-                    background-color: #e9ecef;
-                    color: #212529;
-                    border: 1px solid #ced4da;
-                }
-                
-                QMessageBox QPushButton:hover {
-                    background-color: #0d6efd;
-                    color: white;
-                }
-                
-                /* Botones de acción */
-                QPushButton#btn_limpiar_todo, QPushButton#btn_eliminar {
-                    background-color: #dc3545;
-                    color: white;
-                    border: 1px solid #bb2d3b;
-                }
-                
-                QPushButton#btn_limpiar_todo:hover, QPushButton#btn_eliminar:hover {
-                    background-color: #bb2d3b;
-                }
-                
-                QPushButton#btn_limpiar_todo:pressed, QPushButton#btn_eliminar:pressed {
-                    background-color: #b02a37;
-                }
-                
-                /* Resaltado de filas */
-                QTableWidget::item[valor_alto="true"] {
-                    background-color: #fff3bf;
-                    color: #212529;
-                }
-            """)
-            # Cambiar ícono a sol (modo claro activado)
-            self.btn_tema.setIcon(self.style().standardIcon(getattr(QStyle.StandardPixmap, 'SP_TitleBarMaxButton')))
+            
+            /* Botón Exportar a Excel */
+            QPushButton#btn_exportar {
+                background-color: #3498db;
+                color: #ffffff;
+            }
+            
+            /* Botón Limpiar Todo */
+            QPushButton#btn_limpiar_todo {
+                background-color: #f8d7da;
+                color: #721c24;
+                border: 1px solid #f5c6cb;
+            }
+            
+            /* Estados de los botones */
+            QPushButton#menu_importar:hover,
+            QPushButton#btn_exportar:hover {
+                background-color: #2980b9;
+            }
+            
+            QPushButton#menu_importar:pressed,
+            QPushButton#btn_exportar:pressed {
+                background-color: #2472a4;
+            }
+            
+            /* Estados específicos para Limpiar Todo */
+            QPushButton#btn_limpiar_todo:hover {
+                background-color: #f5c6cb;
+                border-color: #f1b0b7;
+            }
+            
+            QPushButton#btn_limpiar_todo:pressed {
+                background-color: #f1b0b7;
+                border-color: #ea99a3;
+            }
+            
+            /* Tarjetas (QGroupBox) */
+            QGroupBox {
+                background-color: #ffffff;
+                border: 1px solid #d6dbe2;
+                border-radius: 12px;
+                margin-top: 15px;
+                padding-top: 25px;
+                color: #333333;
+            }
+            
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 0 8px;
+                color: #3498db;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            
+            /* Botones generales */
+            QPushButton {
+                background-color: #3498db;
+                color: #ffffff;
+                border: none;
+                padding: 8px 20px;
+                border-radius: 8px;
+                font-weight: 500;
+                min-width: 100px;
+            }
+            
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+            
+            QPushButton:pressed {
+                background-color: #2472a4;
+            }
+            
+            /* Botón Guardar */
+            QPushButton#btn_guardar {
+                background-color: #2ecc71;
+            }
+            
+            QPushButton#btn_guardar:hover {
+                background-color: #27ae60;
+            }
+            
+            /* Campos de entrada */
+            QLineEdit, QTextEdit, QComboBox, QDateEdit {
+                background-color: #ffffff;
+                color: #333333;
+                border: 1px solid #d6dbe2;
+                padding: 8px;
+                border-radius: 6px;
+                selection-background-color: #3498db;
+                selection-color: #ffffff;
+            }
+            
+            /* Pestañas */
+            QTabWidget::pane {
+                border: none;
+                background: #ffffff;
+            }
+            
+            QTabBar::tab {
+                background: #ecf0f1;
+                color: #7f8c8d;
+                padding: 10px 20px;
+                border: none;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                margin-right: 4px;
+                font-weight: 500;
+            }
+            
+            QTabBar::tab:selected {
+                background: #3498db;
+                color: #ffffff;
+            }
+            
+            QTabBar::tab:!selected {
+                margin-top: 4px;
+            }
+            
+            /* Tablas */
+            QTableWidget {
+                background-color: #ffffff;
+                color: #333333;
+                gridline-color: #d6dbe2;
+                border: 1px solid #d6dbe2;
+                border-radius: 8px;
+                alternate-background-color: #f8f9fa;
+            }
+            
+            QTableWidget::item {
+                padding: 8px;
+            }
+            
+            QTableWidget::item:selected {
+                background-color: #3498db;
+                color: #ffffff;
+            }
+            
+            QHeaderView::section {
+                background-color: #3498db;
+                color: #ffffff;
+                padding: 8px;
+                border: none;
+                font-weight: bold;
+            }
+            
+            /* Barra de estado */
+            QStatusBar {
+                background-color: #3498db;
+                color: #ffffff;
+                border-top: 1px solid #2980b9;
+            }
+        """)
         
-        # Actualizar el tooltip del botón
-        modo = "oscuro" if self.tema_oscuro else "claro"
-        self.btn_tema.setToolTip(f"Cambiar a modo {'claro' if self.tema_oscuro else 'oscuro'}")
+        # Actualizar el texto del botón de tema
+        self.btn_tema.setText("Modo Claro" if self.tema_oscuro else "Modo Oscuro")
+        
+        # Aplicar sombras a los widgets (requiere Qt5)
+        self.aplicar_sombras()
         
         # Forzar actualización de la interfaz
         self.update()
+    
+        # Actualizar todos los widgets hijos
         for widget in self.findChildren(QWidget):
             widget.update()
+    
+    def aplicar_sombras(self):
+        """Aplicar efectos de sombra a los widgets principales"""
+        from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+        
+        # Configurar sombra para tarjetas (GroupBox)
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(15)
+        shadow.setXOffset(0)
+        shadow.setYOffset(5)
+        shadow.setColor(QColor(0, 0, 0, 80 if self.tema_oscuro else 30))
+        
+        for group_box in self.findChildren(QGroupBox):
+            group_box.setGraphicsEffect(shadow)
+        
+        # Configurar sombra para la tabla
+        table_shadow = QGraphicsDropShadowEffect()
+        table_shadow.setBlurRadius(10)
+        table_shadow.setXOffset(0)
+        table_shadow.setYOffset(3)
+        table_shadow.setColor(QColor(0, 0, 0, 50 if self.tema_oscuro else 20))
+        
+        if hasattr(self, 'tabla_facturas'):
+            self.tabla_facturas.setGraphicsEffect(table_shadow)
+        
+        if hasattr(self, 'tabla_filtrada'):
+            self.tabla_filtrada.setGraphicsEffect(table_shadow)
 
 def main():
     app = QApplication(sys.argv)
