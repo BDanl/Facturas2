@@ -567,8 +567,8 @@ class MainWindow(QMainWindow):
         # Hacer la tabla editable y configurar el delegado para columnas editables
         self.tabla_filtrada.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed)
         
-        # Configurar el delegado para hacer editables solo las columnas de Descripción y Valor (índices 2 y 3)
-        delegate = EditableDelegate(self.tabla_filtrada, editable_columns=[2, 3])
+        # Configurar el delegado para hacer editables todas las columnas
+        delegate = EditableDelegate(self.tabla_filtrada, editable_columns=[0, 1, 2, 3])
         self.tabla_filtrada.setItemDelegate(delegate)
         
         # Conectar la señal itemChanged al manejador de cambios
@@ -698,8 +698,8 @@ class MainWindow(QMainWindow):
         # Configurar las columnas
         self.tabla_facturas.setColumnHidden(0, True)  # Ocultar columna de checkboxes
         
-        # Hacer que solo las columnas de descripción y valor sean editables
-        self.tabla_facturas.setItemDelegate(EditableDelegate(self.tabla_facturas, [3, 4]))  # Índices 3 y 4 para descripción y valor
+        # Hacer que todas las columnas sean editables
+        self.tabla_facturas.setItemDelegate(EditableDelegate(self.tabla_facturas, [1, 2, 3, 4]))
         
         # Ajustar el tamaño de las columnas
         header = self.tabla_facturas.horizontalHeader()
@@ -831,14 +831,14 @@ class MainWindow(QMainWindow):
             item_id.setFlags(item_id.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.tabla_facturas.setItem(i, 0, item_id)
             
-            # Fecha (no editable en la tabla)
+            # Fecha (editable)
             item_fecha = QTableWidgetItem(factura['fecha'])
-            item_fecha.setFlags(item_fecha.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            item_fecha.setFlags(item_fecha.flags() | Qt.ItemFlag.ItemIsEditable)
             self.tabla_facturas.setItem(i, 1, item_fecha)
             
-            # Tipo (no editable en la tabla)
+            # Tipo (editable)
             item_tipo = QTableWidgetItem(factura['tipo'])
-            item_tipo.setFlags(item_tipo.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            item_tipo.setFlags(item_tipo.flags() | Qt.ItemFlag.ItemIsEditable)
             self.tabla_facturas.setItem(i, 2, item_tipo)
             
             # Descripción (editable)
@@ -1522,9 +1522,9 @@ class MainWindow(QMainWindow):
             sheet_dialog.setMinimumWidth(300)
             
             layout = QVBoxLayout()
-            sheet_dialog.setLayout(layout)
             
-            layout.addWidget(QLabel("Seleccione la hoja que contiene los datos:"))
+            # Mostrar resumen
+            resumen = QLabel("Seleccione la hoja que contiene los datos:")
             
             # Lista de hojas disponibles
             sheet_list = QListWidget()
@@ -1537,6 +1537,8 @@ class MainWindow(QMainWindow):
             btn_box.accepted.connect(sheet_dialog.accept)
             btn_box.rejected.connect(sheet_dialog.reject)
             layout.addWidget(btn_box)
+            
+            sheet_dialog.setLayout(layout)
             
             if sheet_dialog.exec() != QDialog.DialogCode.Accepted:
                 loading_box.close()
@@ -1953,46 +1955,6 @@ class MainWindow(QMainWindow):
             logger.error(error_msg, exc_info=True)
             QMessageBox.critical(self, "Error", error_msg)
             return False
-            if reply == QMessageBox.StandardButton.Cancel:
-                return
-            
-            # Guardar copia de seguridad de los datos actuales
-            facturas_originales = self.facturas.copy()
-            
-            try:
-                if reply == QMessageBox.StandardButton.Yes:
-                    # Sobrescribir facturas existentes
-                    self.facturas = facturas_validas
-                else:
-                    # Agregar a las facturas existentes
-                    self.facturas.extend(facturas_validas)
-                
-                # Guardar los datos
-                self.guardar_datos()
-                
-                # Actualizar la interfaz
-                self.actualizar_tabla_facturas()
-                self.actualizar_resumenes()
-                
-                QMessageBox.information(
-                    self, 
-                    "Importación exitosa", 
-                    f"Se importaron {len(facturas_validas)} facturas desde el archivo JSON."
-                )
-                
-            except Exception as e:
-                # En caso de error, restaurar los datos originales
-                self.facturas = facturas_originales
-                error_msg = f"Error al importar las facturas: {str(e)}"
-                logger.error(error_msg, exc_info=True)
-                QMessageBox.critical(self, "Error", error_msg)
-            
-        except json.JSONDecodeError:
-            QMessageBox.critical(self, "Error", "El archivo seleccionado no es un JSON válido.")
-        except Exception as e:
-            error_msg = f"Error al importar desde JSON: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            QMessageBox.critical(self, "Error", error_msg)
     
     def exportar_a_excel(self):
         """Exportar los datos a un archivo Excel con formato de tabla"""
@@ -2307,7 +2269,7 @@ class MainWindow(QMainWindow):
                         pass
                 # Añadir un poco más de espacio para el borde y padding
                 adjusted_width = (max_length + 4) * 1.1
-                ws_resumen.column_dimensions[column_letter].width = min(adjusted_width, 50)  # Aumentado el ancho máximo a 50
+                ws_resumen.column_dimensions[column_letter].width = min(adjusted_width, 50)  # Ajustado el ancho máximo a 50
             
             # 5. Hoja de Resumen Mensual
             ws_mensual = wb.create_sheet("Resumen Mensual")
@@ -2573,144 +2535,392 @@ class MainWindow(QMainWindow):
             print(f"Error en actualizar_boton_eliminar: {str(e)}")
             if hasattr(self, 'btn_eliminar'):
                 self.btn_eliminar.setEnabled(False)
+    
+    def actualizar_otra_tabla(self, factura_id, campo, nuevo_valor, es_tabla_filtrada):
+        """
+        Actualiza el valor en la otra tabla cuando se realiza un cambio en una de ellas
         
+        Args:
+            factura_id: ID de la factura que se está actualizando
+            campo: Nombre del campo que se modificó
+            nuevo_valor: Nuevo valor del campo
+            es_tabla_filtrada: Booleano que indica si el cambio vino de la tabla filtrada
+        """
+        try:
+            # Determinar qué tabla actualizar (la que no generó el cambio)
+            tabla_destino = self.tabla_filtrada if not es_tabla_filtrada else self.tabla_facturas
+            
+            # Mapear campos a columnas según la tabla de destino
+            # La tabla principal tiene columnas: [ID, Fecha, Tipo, Descripción, Valor]
+            # La tabla filtrada tiene columnas: [Fecha, Tipo, Descripción, Valor]
+            if es_tabla_filtrada:
+                # Si el destino es la tabla filtrada (origen: tabla principal)
+                mapeo_campos = {
+                    'fecha': 0,   # Columna 0 en tabla filtrada
+                    'tipo': 1,    # Columna 1 en tabla filtrada
+                    'descripcion': 2,  # Columna 2 en tabla filtrada
+                    'valor': 3     # Columna 3 en tabla filtrada
+                }
+            else:
+                # Si el destino es la tabla principal (origen: tabla filtrada)
+                mapeo_campos = {
+                    'fecha': 1,   # Columna 1 en tabla principal (0 es ID)
+                    'tipo': 2,    # Columna 2 en tabla principal
+                    'descripcion': 3,  # Columna 3 en tabla principal
+                    'valor': 4     # Columna 4 en tabla principal
+                }
+            
+            # Obtener el índice de la columna
+            columna = mapeo_campos.get(campo)
+            if columna is None:
+                return
+                
+            # Buscar la fila que contiene la factura en la tabla de destino
+            for fila in range(tabla_destino.rowCount()):
+                # Obtener el ID de la factura de la fila actual
+                item_id = tabla_destino.item(fila, 0)
+                if not item_id:
+                    continue
+                    
+                # Obtener el ID de la factura, ya sea de UserRole o del texto
+                if es_tabla_filtrada:
+                    # Para la tabla filtrada, el ID está en UserRole
+                    current_id = item_id.data(Qt.ItemDataRole.UserRole)
+                else:
+                    # Para la tabla principal, el ID está en el texto de la columna 0
+                    current_id = int(item_id.text()) if item_id.text().isdigit() else None
+                
+                if current_id == factura_id:
+                    # Actualizar la celda correspondiente
+                    item = tabla_destino.item(fila, columna)
+                    if item:
+                        # Bloquear señales temporalmente para evitar bucles
+                        tabla_destino.blockSignals(True)
+                        try:
+                            if campo == 'valor':
+                                # Formatear valor numérico
+                                try:
+                                    valor = float(nuevo_valor)
+                                    item.setText(f"${valor:,.2f} COP".replace(",", "X").replace(".", ",").replace("X", "."))
+                                except (ValueError, TypeError):
+                                    item.setText(str(nuevo_valor))
+                            else:
+                                item.setText(str(nuevo_valor))
+                        finally:
+                            # Restaurar señales
+                            tabla_destino.blockSignals(False)
+                        # Salir del bucle una vez actualizado
+                        break
+        except Exception as e:
+            logger.error(f"Error al actualizar la otra tabla: {str(e)}")
+
     def guardar_cambios_celda(self, item):
-        """Guardar los cambios realizados en una celda de la tabla"""
-        # Obtener la tabla que emitió la señal
-        tabla = self.sender()
-        if not isinstance(tabla, QTableWidget):
+        """
+        Maneja los cambios en las celdas editables de las tablas.
+        
+        Args:
+            item: El ítem de la tabla que fue modificado
+        """
+        # Evitar llamadas recursivas durante la actualización
+        if not hasattr(self, '_updating_cell'):
+            self._updating_cell = False
+            
+        if self._updating_cell:
             return
             
         try:
-            # Bloquear señales de la tabla temporalmente
-            tabla.blockSignals(True)
+            self._updating_cell = True
             
-            # Determinar si es la tabla filtrada
+            # Determinar qué tabla generó el evento
+            tabla = self.sender()
+            if tabla not in [self.tabla_facturas, self.tabla_filtrada]:
+                return
+                
             es_tabla_filtrada = (tabla == self.tabla_filtrada)
             
-            # Verificar si es una columna editable
-            if (es_tabla_filtrada and item.column() not in [2, 3]) or (not es_tabla_filtrada and item.column() not in [3, 4]):
-                return
-                
-            # Obtener el índice de la fila
-            row = item.row()
-            if row < 0 or row >= tabla.rowCount():
-                return
+            # Mapeo de columnas a campos de factura según la tabla
+            # (es_tabla_filtrada, column_index): 'field_name'
+            column_mapping = {
+                # Tabla filtrada (sin columna ID)
+                (True, 0): 'fecha',      # Columna 0: Fecha
+                (True, 1): 'tipo',       # Columna 1: Tipo
+                (True, 2): 'descripcion', # Columna 2: Descripción
+                (True, 3): 'valor',      # Columna 3: Valor
+                # Tabla principal (con columna ID)
+                (False, 0): 'id',        # Columna 0: ID (no editable)
+                (False, 1): 'fecha',     # Columna 1: Fecha
+                (False, 2): 'tipo',      # Columna 2: Tipo
+                (False, 3): 'descripcion', # Columna 3: Descripción
+                (False, 4): 'valor'      # Columna 4: Valor
+            }
             
-            # Obtener el ID de la factura
-            factura_id = None
-            id_item = tabla.item(row, 0)
-            if not id_item:
+            # Obtener el campo que se está editando
+            campo = column_mapping.get((es_tabla_filtrada, item.column()))
+            if not campo or campo == 'id':  # No permitir editar el ID
                 return
                 
-            if es_tabla_filtrada:
-                factura_id = id_item.data(Qt.ItemDataRole.UserRole)
-            else:
+            # Obtener el nuevo valor y limpiarlo
+            nuevo_valor = item.text().strip()
+            
+            # Validar que el campo no esté vacío
+            if not nuevo_valor:
+                QMessageBox.warning(self, "Error", "El campo no puede estar vacío")
+                self._restaurar_valor_anterior(tabla, item, campo)
+                return
+                
+            # Validaciones específicas por tipo de campo
+            if campo == 'fecha':
                 try:
-                    factura_id = int(id_item.text())
-                except (ValueError, AttributeError):
-                    return
-            
-            if not factura_id:
-                return
-            
-            # Buscar la factura correspondiente
-            factura = next((f for f in self.facturas if f.get('id') == factura_id), None)
-            if not factura:
-                return
-            
-            # Determinar el campo a actualizar
-            campo = None
-            nuevo_valor = None
-            
-            if (es_tabla_filtrada and item.column() == 2) or (not es_tabla_filtrada and item.column() == 3):
-                campo = 'descripcion'
-                nuevo_valor = item.text().strip()
-                
-                # Validar el valor
-                if not nuevo_valor:
-                    QMessageBox.warning(self, "Error", "La descripción no puede estar vacía")
-                    item.setText(factura.get('descripcion', ''))
+                    # Validar formato de fecha (DD/MM/YYYY)
+                    datetime.strptime(nuevo_valor, '%d/%m/%Y')
+                except ValueError:
+                    QMessageBox.warning(self, "Formato inválido", 
+                                     "El formato de fecha debe ser DD/MM/YYYY")
+                    self._restaurar_valor_anterior(tabla, item, campo)
                     return
                     
-            elif (es_tabla_filtrada and item.column() == 3) or (not es_tabla_filtrada and item.column() == 4):
-                campo = 'valor'
-                # Obtener el texto y limpiarlo
-                texto = item.text().strip()
-                # Eliminar caracteres de moneda y espacios
-                texto = texto.replace('$', '').replace('COP', '').replace('.', '').replace(' ', '')
-                # Reemplazar comas por puntos para el formato decimal
-                texto = texto.replace(',', '.')
+            elif campo == 'valor':
                 try:
-                    # Convertir a float y redondear a 2 decimales
-                    nuevo_valor = round(float(texto), 2)
-                    if nuevo_valor < 0:
-                        raise ValueError("El valor no puede ser negativo")
+                    # Extraer solo los números y el punto decimal
+                    valor_limpio = ''.join(c for c in nuevo_valor if c.isdigit() or c in '.,')
+                    # Reemplazar comas por puntos para el float
+                    valor_limpio = valor_limpio.replace(',', '.')
+                    valor_numerico = float(valor_limpio)
+                    if valor_numerico <= 0:
+                        raise ValueError("El valor debe ser mayor a cero")
+                    
+                    # Formatear el valor para mostrarlo en la tabla
+                    valor_formateado = f"${valor_numerico:,.0f} COP".replace(',', '.')
+                    item.setText(valor_formateado)
+                    nuevo_valor = str(valor_numerico)  # Guardar como string numérico
                 except (ValueError, TypeError) as e:
-                    QMessageBox.warning(self, "Error", "El valor debe ser un número positivo")
-                    item.setText(f"${factura.get('valor', 0):,.0f} COP".replace(',', '.'))
+                    QMessageBox.warning(self, "Valor inválido", 
+                                     f"El valor debe ser un número mayor a cero: {str(e)}")
+                    self._restaurar_valor_anterior(tabla, item, campo)
                     return
             
-            # Si no se determinó un campo válido, salir
-            if campo is None or nuevo_valor is None:
+            # Obtener el ID de la factura usando el método _obtener_id_factura
+            fila = item.row()
+            es_tabla_filtrada = (tabla == self.tabla_filtrada) if hasattr(self, 'tabla_filtrada') else False
+            factura_id = self._obtener_id_factura(tabla, fila, es_tabla_filtrada)
+            
+            if factura_id is None:
+                logger.error("No se pudo obtener el ID de la factura")
+                self._restaurar_valor_anterior(tabla, item, campo)
+                return
+            
+            # Encontrar la factura en la lista de facturas
+            factura = next((f for f in self.facturas if f.get('id') == factura_id), None)
+            if not factura:
+                logger.error(f"No se encontró la factura con ID {factura_id}")
+                self._restaurar_valor_anterior(tabla, item, campo)
                 return
             
             # Verificar si el valor realmente cambió
-            if campo in factura and factura[campo] == nuevo_valor:
+            if campo in factura and str(factura[campo]) == nuevo_valor:
                 return
             
             # Guardar el valor anterior para restaurar en caso de error
-            valor_anterior = factura[campo] if campo in factura else None
+            valor_anterior = factura.get(campo)
             
             try:
                 # Actualizar el valor en el diccionario de la factura
-                factura[campo] = nuevo_valor
-                
-                # Formatear el valor para mostrarlo en la tabla
                 if campo == 'valor':
-                    # Formatear el valor con separadores de miles y dos decimales
-                    valor_formateado = f"${nuevo_valor:,.2f} COP".replace(',', 'X').replace('.', ',').replace('X', '.')
-                    item.setText(valor_formateado)
+                    # Para el campo valor, guardar como float
+                    factura[campo] = float(nuevo_valor) if isinstance(nuevo_valor, (int, float)) else float(nuevo_valor.replace('.', '').replace(',', '.'))
+                else:
+                    # Para los demás campos, guardar como string
+                    factura[campo] = str(nuevo_valor).strip()
                 
                 # Guardar los cambios en la base de datos
                 if self.db.actualizar_factura(
                     factura_id=factura_id,
-                    fecha=factura['fecha'],
-                    tipo=factura['tipo'],
-                    descripcion=factura['descripcion'],
-                    valor=factura['valor']
+                    fecha=factura.get('fecha', ''),
+                    tipo=factura.get('tipo', ''),
+                    descripcion=factura.get('descripcion', ''),
+                    valor=float(factura.get('valor', 0))
                 ):
-                    # Mostrar mensaje de éxito
-                    self.statusBar().showMessage("Cambios guardados correctamente", 2000)
+                    # Actualizar la otra tabla si es necesario
+                    self.actualizar_otra_tabla(factura_id, campo, nuevo_valor, es_tabla_filtrada)
                     
-                    # Resaltar la fila modificada temporalmente
-                    for col in range(tabla.columnCount()):
-                        cell_item = tabla.item(row, col)
-                        if cell_item:
-                            cell_item.setBackground(QColor(230, 255, 230))  # Verde claro
+                    # Actualizar la lista de facturas para reflejar los cambios
+                    self.actualizar_lista_facturas()
                     
-                    # Programar la restauración del color después de 2 segundos
-                    QTimer.singleShot(2000, lambda r=row, t=tabla: self.restaurar_color_fila(r, 0, t))
+                    # Actualizar resúmenes
+                    self.actualizar_resumen()
                     
-                    # Actualizar los datos y la UI sin causar señales adicionales
-                    self.cargar_datos(actualizar_ui=True)
+                    # Mostrar mensaje de éxito en la barra de estado
+                    self.statusBar().showMessage("Cambios guardados correctamente", 3000)
                     
+                    # Forzar actualización visual de las tablas
+                    tabla.viewport().update()
+                    if es_tabla_filtrada:
+                        self.tabla_facturas.viewport().update()
+                    else:
+                        self.tabla_filtrada.viewport().update()
                 else:
-                    # Si hay un error al guardar, restaurar el valor original
-                    raise Exception("No se pudo guardar el cambio en la base de datos")
+                    raise Exception("No se pudo actualizar la base de datos")
                     
             except Exception as e:
-                # Restaurar el valor anterior en caso de error
-                if campo in factura and valor_anterior is not None:
-                    factura[campo] = valor_anterior
-                    if campo == 'descripcion':
-                        item.setText(str(valor_anterior))
-                    elif campo == 'valor':
-                        # Formatear el valor con separadores de miles y dos decimales
-                        valor_formateado = f"${float(valor_anterior):,.2f} COP".replace(',', 'X').replace('.', ',').replace('X', '.')
-                        item.setText(valor_formateado)
+                # Revertir el cambio en la interfaz
+                factura[campo] = valor_anterior
+                self._restaurar_valor_anterior(tabla, item, campo, valor_anterior)
                 
-                QMessageBox.critical(self, "Error", str(e))
+                # Mostrar mensaje de error
+                error_msg = f"Error al guardar los cambios: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                QMessageBox.critical(self, "Error", error_msg)
+                
+        finally:
+            self._updating_cell = False
+    
+    def _restaurar_valor_anterior(self, tabla, item, campo, valor_anterior=None):
+        """
+        Restaura el valor anterior de una celda después de un error de validación
+        
+        Args:
+            tabla: Referencia a la tabla (self.tabla_facturas o self.tabla_filtrada)
+            item: El ítem de la tabla que se está editando
+            campo: Nombre del campo que se está editando
+            valor_anterior: Valor anterior a restaurar (opcional)
+        """
+        try:
+            tabla.blockSignals(True)
+            
+            if campo == 'valor' and valor_anterior is not None:
+                # Formatear valor numérico
+                try:
+                    valor = float(valor_anterior)
+                    item.setText(f"${valor:,.0f} COP".replace(',', '.'))
+                except (ValueError, TypeError):
+                    item.setText(str(valor_anterior))
+            elif valor_anterior is not None:
+                item.setText(str(valor_anterior))
+        except Exception as e:
+            logger.error(f"Error al restaurar valor anterior: {str(e)}")
+        finally:
+            tabla.blockSignals(False)
+
+    def _procesar_valor(self, nuevo_valor, factura):
+        """
+        Procesa el valor numérico de una factura, validando y formateando correctamente.
+        
+        Args:
+            nuevo_valor: El valor a procesar (puede ser string con formato de moneda)
+            factura: Diccionario con los datos de la factura
+            
+        Returns:
+            float: El valor numérico procesado
+        """
+        try:
+            # Limpiar el valor numérico
+            valor_limpio = str(nuevo_valor).replace('$', '').replace('COP', '').replace('.', '').replace(' ', '').replace(',', '.')
+            valor_numerico = round(float(valor_limpio), 2)
+            if valor_numerico < 0:
+                raise ValueError("El valor no puede ser negativo")
+            return valor_numerico
+        except (ValueError, TypeError) as e:
+            # Si hay un error, devolver el valor anterior de la factura
+            return float(factura.get('valor', 0))
+
+    def _formatear_valor_moneda(self, valor):
+        """
+        Formatea un valor numérico como moneda colombiana.
+        
+        Args:
+            valor: Valor numérico a formatear
+            
+        Returns:
+            str: Valor formateado como moneda colombiana
+        """
+        try:
+            valor_float = float(valor)
+            return f"${valor_float:,.0f} COP".replace(",", "X").replace(".", ",").replace("X", ".")
+        except (ValueError, TypeError):
+            return "$0 COP"
+
+    def _obtener_id_factura(self, tabla, fila, es_tabla_filtrada):
+        """
+        Obtiene el ID de la factura desde una fila de la tabla.
+        
+        Args:
+            tabla: Tabla de la que obtener el ID
+            fila: Índice de la fila
+            es_tabla_filtrada: Indica si es la tabla filtrada
+            
+        Returns:
+            int or None: ID de la factura o None si no se pudo obtener
+        """
+        try:
+            # Obtener el ítem de la primera columna (donde normalmente está el ID)
+            item = tabla.item(fila, 0)
+            if item is None:
+                logger.warning("No se pudo obtener el ítem de la tabla")
+                return None
+                
+            # Primero intentar obtener el ID del UserRole (usado en la tabla filtrada)
+            factura_id = item.data(Qt.ItemDataRole.UserRole)
+            if factura_id is not None and str(factura_id).isdigit():
+                return int(factura_id)
+                
+            # Si no está en UserRole, intentar obtenerlo del texto
+            if item.text().isdigit():
+                return int(item.text())
+                
+            # Si no se pudo obtener, intentar con la columna oculta (si existe)
+            if tabla.columnCount() > 4:  # Si hay una columna oculta con el ID
+                item_id = tabla.item(fila, 4)  # Asumiendo que el ID está en la columna 4 (oculta)
+                if item_id and item_id.text().isdigit():
+                    return int(item_id.text())
+                    
+            logger.warning(f"No se pudo obtener el ID de la factura de la fila {fila}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error al obtener ID de factura: {str(e)}", exc_info=True)
+            return None
+        
+        try:
+            # Actualizar el valor en el diccionario de la factura
+            factura[campo] = nuevo_valor
+            
+            # Guardar los cambios en la base de datos
+            if self.db.actualizar_factura(
+                factura_id=factura_id,
+                fecha=factura['fecha'],
+                tipo=factura['tipo'],
+                descripcion=factura['descripcion'],
+                valor=factura['valor']
+            ):
+                # Mostrar mensaje de éxito
+                self.statusBar().showMessage("Cambios guardados correctamente", 2000)
+                
+                # Resaltar la fila modificada temporalmente
+                for col in range(tabla.columnCount()):
+                    cell_item = tabla.item(row, col)
+                    if cell_item:
+                        cell_item.setBackground(QColor(230, 255, 230))  # Verde claro
+                
+                # Programar la restauración del color después de 2 segundos
+                QTimer.singleShot(2000, lambda r=row, t=tabla: self.restaurar_color_fila(r, 0, t))
+                
+                # Actualizar la otra tabla si es necesario
+                self.actualizar_otra_tabla(factura_id, campo, nuevo_valor, es_tabla_filtrada)
+                
+            else:
+                # Si hay un error al guardar, restaurar el valor original
+                raise Exception("No se pudo guardar el cambio en la base de datos")
+                
+        except Exception as e:
+            # Restaurar el valor anterior en caso de error
+            if campo in factura and valor_anterior is not None:
+                factura[campo] = valor_anterior
+                if campo == 'valor':
+                    item.setText(f"${float(valor_anterior):,.2f} COP".replace(',', 'X').replace('.', ',').replace('X', '.'))
+                else:
+                    item.setText(str(valor_anterior))
+            
+            QMessageBox.critical(self, "Error", str(e))
                 
         finally:
             # Restaurar las señales de la tabla
