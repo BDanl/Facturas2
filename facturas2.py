@@ -919,6 +919,7 @@ class MainWindow(QMainWindow):
                     logger.warning(f"Error al procesar factura: {str(e)}")
                     continue
             
+            
             # Formatear el resumen
             nombre_mes = self.combo_mes_resumen.currentText()
             texto = f"Resumen de gastos para {nombre_mes} de {anio}\n\n"
