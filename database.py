@@ -378,14 +378,19 @@ class Database:
     
     def obtener_tipos_gasto(self) -> List[Dict[str, Any]]:
         """
-        Obtiene la lista de tipos de gasto.
+        Obtiene la lista de tipos de gasto, excluyendo 'coche' y 'coches'.
         
         Returns:
             List[Dict]: Lista de diccionarios con los tipos de gasto.
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT id, nombre, descripcion, color FROM tipos_gasto ORDER BY nombre')
+            cursor.execute('''
+                SELECT id, nombre, descripcion, color 
+                FROM tipos_gasto 
+                WHERE LOWER(nombre) NOT IN ('coche', 'coches')
+                ORDER BY nombre
+            ''')
             return [dict(row) for row in cursor.fetchall()]
     
     def obtener_resumen_por_tipo(self, fecha_inicio: str = None, fecha_fin: str = None) -> List[Dict[str, Any]]:

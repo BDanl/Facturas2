@@ -66,6 +66,50 @@ class EditableDelegate(QStyledItemDelegate):
             super().setModelData(editor, model, index)
 
 
+class TipoGastoDelegate(QStyledItemDelegate):
+    """Delegate para la columna de tipo de gasto con QComboBox"""
+    def __init__(self, parent=None, tipos_gasto=None, column_index=2):
+        super().__init__(parent)
+        self.tipos_gasto = tipos_gasto or []
+        self.column_index = column_index  # Índice de la columna de tipo
+    
+    def createEditor(self, parent, option, index):
+        """Crear un QComboBox como editor"""
+        if index.column() == self.column_index:  # Usar el índice de columna configurado
+            editor = QComboBox(parent)
+            # Agregar los tipos de gasto al combobox
+            for tipo in self.tipos_gasto:
+                editor.addItem(tipo['nombre'])
+            editor.setMinimumHeight(40)
+            editor.installEventFilter(self)
+            return editor
+        return super().createEditor(parent, option, index)
+    
+    def setEditorData(self, editor, index):
+        """Establecer el valor actual en el editor"""
+        if index.column() == self.column_index:
+            current_text = index.data(Qt.ItemDataRole.DisplayRole)
+            idx = editor.findText(current_text)
+            if idx >= 0:
+                editor.setCurrentIndex(idx)
+        else:
+            super().setEditorData(editor, index)
+    
+    def setModelData(self, editor, model, index):
+        """Guardar el valor seleccionado en el modelo"""
+        if index.column() == self.column_index:
+            model.setData(index, editor.currentText(), Qt.ItemDataRole.EditRole)
+        else:
+            super().setModelData(editor, model, index)
+    
+    def updateEditorGeometry(self, editor, option, index):
+        """Ajustar la geometría del editor"""
+        if index.column() == self.column_index:
+            editor.setGeometry(option.rect)
+        else:
+            super().updateEditorGeometry(editor, option, index)
+
+
 
 # Importaciones para Excel
 try:
@@ -576,22 +620,32 @@ class MainWindow(QMainWindow):
         self.tabla_filtrada.setColumnCount(4)
         self.tabla_filtrada.setHorizontalHeaderLabels(["Fecha", "Tipo", "Descripción", "Valor"])
         
-        # Hacer la tabla editable y configurar el delegado para columnas editables
-        self.tabla_filtrada.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed)
-        
-        # Configurar el delegado para hacer editables todas las columnas
-        delegate = EditableDelegate(self.tabla_filtrada, editable_columns=[0, 1, 2, 3])
-        self.tabla_filtrada.setItemDelegate(delegate)
-        
-        # Conectar la señal itemChanged al manejador de cambios
-        self.tabla_filtrada.itemChanged.connect(self.guardar_cambios_celda)
-        
-        # Configurar cabeceras
+        # Configurar el ancho de las columnas
         header = self.tabla_filtrada.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Fecha
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Tipo
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)  # Descripción
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Valor
+        
+        # Configurar edición de celdas
+        self.tabla_filtrada.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed)
+        
+        # Configurar delegado para columnas editables (excepto tipo)
+        delegate = EditableDelegate(self.tabla_filtrada, editable_columns=[0, 2, 3])  # Fecha, Descripción, Valor
+        
+        # Configurar delegado personalizado para la columna de tipo (índice 1)
+        self.tipo_delegate_filtros = TipoGastoDelegate(
+            self.tabla_filtrada, 
+            tipos_gasto=self.tipos_gasto,
+            column_index=1  # Índice de la columna 'tipo' en la tabla filtrada
+        )
+        self.tabla_filtrada.setItemDelegateForColumn(1, self.tipo_delegate_filtros)
+        
+        # Asignar el delegado general para las demás columnas
+        self.tabla_filtrada.setItemDelegate(delegate)
+        
+        # Conectar la señal itemChanged al manejador de cambios
+        self.tabla_filtrada.itemChanged.connect(self.guardar_cambios_celda)
         
         # Agregar widgets al layout principal
         layout.addWidget(grupo_filtros)
@@ -696,8 +750,12 @@ class MainWindow(QMainWindow):
         # Configurar las columnas
         self.tabla_facturas.setColumnHidden(0, True)  # Ocultar columna de checkboxes
         
-        # Hacer que todas las columnas sean editables
-        self.tabla_facturas.setItemDelegate(EditableDelegate(self.tabla_facturas, [1, 2, 3, 4]))
+        # Configurar delegados para celdas editables
+        # Usar EditableDelegate para todas las columnas editables excepto tipo
+        self.tabla_facturas.setItemDelegate(EditableDelegate(self.tabla_facturas, [1, 3, 4]))  # Columnas editables: Fecha (1), Descripción (3), Valor (4)
+        
+        # Configurar delegado personalizado para la columna de tipo (2)
+        self.tabla_facturas.setItemDelegateForColumn(2, TipoGastoDelegate(self.tabla_facturas, self.tipos_gasto))
         
         # Ajustar el tamaño de las columnas
         header = self.tabla_facturas.horizontalHeader()
@@ -1124,9 +1182,10 @@ class MainWindow(QMainWindow):
                         fecha_item.setData(Qt.ItemDataRole.UserRole, factura_id)  # Store the ID for updates
                     self.tabla_filtrada.setItem(i, 0, fecha_item)
                     
-                    # Tipo (no editable)
+                    # Tipo (editable con dropdown)
                     tipo = factura.get('tipo', '')
                     tipo_item = QTableWidgetItem(str(tipo))
+                    tipo_item.setFlags(tipo_item.flags() | Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsEnabled)
                     self.tabla_filtrada.setItem(i, 1, tipo_item)
                     
                     # Descripción (editable)
@@ -1903,17 +1962,22 @@ class MainWindow(QMainWindow):
             actualizar_ui (bool): Si es True, actualiza la interfaz de usuario
         """
         try:
+            # Obtener todos los tipos de gasto de la base de datos
+            self.tipos_gasto = self.db.obtener_tipos_gasto()
+            
             # Obtener todas las facturas de la base de datos
             self.facturas = self.db.obtener_facturas()
             
             # Actualizar la interfaz si está solicitado y los componentes existen
             if actualizar_ui:
                 if hasattr(self, 'tabla_facturas'):
+                    # Actualizar el delegado de la columna de tipo con los tipos de gasto actualizados
+                    self.tabla_facturas.setItemDelegateForColumn(2, TipoGastoDelegate(self.tabla_facturas, self.tipos_gasto))
                     self.actualizar_lista_facturas()
                 if hasattr(self, 'actualizar_resumen'):
                     self.actualizar_resumen()
             
-            logger.info(f"Se cargaron {len(self.facturas)} facturas desde la base de datos")
+            logger.info(f"Se cargaron {len(self.facturas)} facturas y {len(self.tipos_gasto)} tipos de gasto desde la base de datos")
             return True
             
         except Exception as e:
@@ -1922,6 +1986,7 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'isVisible'):  # Solo mostrar mensaje si la ventana está visible
                 QMessageBox.critical(self, "Error", error_msg)
             self.facturas = []
+            self.tipos_gasto = []
             return False
             
     def guardar_datos(self):
