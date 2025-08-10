@@ -18,7 +18,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side, numbers
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 # Importaciones de PyQt6
-from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtCore import Qt, QDate, QEvent
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QAbstractItemView, 
                              QTableWidget, QTableWidgetItem, QTabWidget, QMessageBox, 
@@ -428,6 +428,29 @@ class MainWindow(QMainWindow):
         layout.addRow("Valor (COP):", self.txt_valor)
         layout.addRow("Fecha:", self.date_fecha)
         layout.addRow(self.btn_guardar)
+        
+        # Conectar la tecla Enter para guardar
+        self.txt_descripcion.returnPressed.connect(self.intentar_guardar_desde_teclado)
+        self.txt_valor.returnPressed.connect(self.intentar_guardar_desde_teclado)
+        
+        # Instalar event filter en los campos de entrada
+        self.txt_descripcion.installEventFilter(self)
+        self.txt_valor.installEventFilter(self)
+        self.cmb_tipo_gasto.installEventFilter(self)
+        self.date_fecha.installEventFilter(self)
+        
+    def eventFilter(self, obj, event):
+        """Filtro de eventos para manejar la tecla Enter en los campos del formulario"""
+        if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Return:
+            if obj in [self.txt_descripcion, self.txt_valor, self.cmb_tipo_gasto, self.date_fecha]:
+                self.intentar_guardar_desde_teclado()
+                return True
+        return super().eventFilter(obj, event)
+        
+    def intentar_guardar_desde_teclado(self):
+        """Intenta guardar la factura cuando se presiona Enter, solo si los campos requeridos están llenos"""
+        if self.validar_campos():
+            self.guardar_factura()
     
     def setup_resumen_tab(self):
         """Configurar la pestaña de resumen"""
