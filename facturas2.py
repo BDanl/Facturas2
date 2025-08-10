@@ -626,20 +626,6 @@ class MainWindow(QMainWindow):
         
         # Crear menú desplegable
         self.import_menu = QMenu(self)
-        self.import_menu.setStyleSheet("""
-            QMenu {
-                background-color: white;
-                border: 1px solid #dee2e6;
-                padding: 5px;
-            }
-            QMenu::item {
-                padding: 5px 15px;
-            }
-            QMenu::item:selected {
-                background-color: #0d6efd;
-                color: white;
-            }
-        """)
         
         # Acciones del menú
         accion_json = QAction("Importar desde JSON", self)
@@ -3271,13 +3257,49 @@ class MainWindow(QMainWindow):
                 btn.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred)
                 
         if self.tema_oscuro:
-            # Estilo moderno para modo oscuro (el que ya tenías)
+            # Estilo moderno para modo oscuro
             self.setStyleSheet("""
                 /* Estilos generales */
                 QMainWindow, QDialog, QWidget {
                     background-color: #1a1a2e;
                     color: #e6e6e6;
                     font-family: 'Segoe UI', Arial, sans-serif;
+                }
+                
+                /* Estilos para menús desplegables - Modo Oscuro */
+                QMenu {
+                    background-color: #2d3748;  /* Fondo oscuro para el menú */
+                    color: #e2e8f0;  /* Texto claro */
+                    border: 1px solid #4a5568;  /* Borde más oscuro */
+                    padding: 8px;
+                    border-radius: 4px;
+                    min-width: 200px;
+                }
+                
+                QMenu::item {
+                    padding: 8px 25px 8px 20px;
+                    border: 1px solid #4a5568;  /* Borde para modo oscuro */
+                    min-width: 160px;
+                    border-radius: 3px;
+                    margin: 3px 0;
+                    background-color: #2d3748;  /* Fondo oscuro para items */
+                }
+                
+                QMenu::item:selected {
+                    background-color: #4a5568;  /* Fondo más claro al seleccionar */
+                    color: #ffffff;  /* Texto blanco */
+                    border: 1px solid #63b3ed;  /* Borde azul claro */
+                    font-weight: 500;
+                }
+                
+                QMenu::item:disabled {
+                    color: #718096;  /* Texto gris para deshabilitados */
+                }
+                
+                QMenu::separator {
+                    height: 1px;
+                    background: #4a5568;  /* Separador más oscuro */
+                    margin: 5px 0;
                 }
                 
                 /* Barra de título */
@@ -3468,9 +3490,45 @@ class MainWindow(QMainWindow):
                 /* Estilos generales */
                 QMainWindow, QDialog, QWidget {
                     background-color: #f0f2f5;
-                    color: #333333;
+                    color: #2c3e50;
                     font-family: 'Segoe UI', Arial, sans-serif;
                 }
+                
+                /* Estilos para menús desplegables - Modo Claro */
+            QMenu {
+                background-color: #ffffff;
+                color: #2c3e50;
+                border: 1px solid #d1d5db;
+                padding: 8px;
+                border-radius: 4px;
+                min-width: 200px;
+            }
+            
+            QMenu::item {
+                padding: 8px 25px 8px 20px;
+                border: 1px solid #e5e7eb;  /* Borde sutil para modo claro */
+                min-width: 160px;
+                border-radius: 3px;
+                margin: 3px 0;
+                background-color: #ffffff;  /* Fondo blanco */
+            }
+            
+            QMenu::item:selected {
+                background-color: #f0f9ff;  /* Fondo azul muy claro al seleccionar */
+                color: #0369a1;  /* Texto azul oscuro */
+                border: 1px solid #7dd3fc;  /* Borde azul claro */
+                font-weight: 500;
+            }
+            
+            QMenu::item:disabled {
+                color: #9ca3af;
+            }
+            
+            QMenu::separator {
+                height: 1px;
+                background: #e5e7eb;  /* Separador gris claro */
+                margin: 5px 0;
+            }
                 
                 /* Barra de título */
                 QLabel[title="true"] {
@@ -3496,10 +3554,14 @@ class MainWindow(QMainWindow):
             }
             
                 /* Botón Importar Facturas */
-                QPushButton#menu_importar {
-                    background-color: #3498db;
-                    color: #ffffff;
-                }
+            QPushButton#menu_importar {
+                background-color: #3498db;
+                color: #ffffff;
+                border: 1px solid #2980b9;
+                border-radius: 4px;
+                padding: 8px 15px;
+                font-weight: 500;
+            }
             
             /* Botón Exportar a Excel */
             QPushButton#btn_exportar {
@@ -3518,6 +3580,7 @@ class MainWindow(QMainWindow):
             QPushButton#menu_importar:hover,
             QPushButton#btn_exportar:hover {
                 background-color: #2980b9;
+                border-color: #2472a4;
             }
             
             QPushButton#menu_importar:pressed,
