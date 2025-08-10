@@ -598,6 +598,9 @@ class MainWindow(QMainWindow):
         form_rango.addRow("Fecha hasta:", self.date_edit_hasta)
         form_rango.addRow("Tipo de gasto:", self.combo_filtro_tipo_rango)
         
+        # Actualizar tipos de gasto en el combo
+        self.actualizar_tipos_gasto_combos()
+        
         grupo_rango.setLayout(form_rango)
         
         # Tab 2: Filtro por año, mes, día y tipo
@@ -634,6 +637,9 @@ class MainWindow(QMainWindow):
         form_fechas.addRow("Mes:", self.combo_filtro_mes)
         form_fechas.addRow("Día:", self.combo_filtro_dia)
         form_fechas.addRow("Tipo de gasto:", self.combo_filtro_tipo_fechas)
+        
+        # Actualizar tipos de gasto en el combo
+        self.actualizar_tipos_gasto_combos()
         
         grupo_fechas.setLayout(form_fechas)
         
@@ -672,11 +678,24 @@ class MainWindow(QMainWindow):
         # Agregar el grupo de filtros
         container_layout.addWidget(group_widget)
         
+        # Layout para los botones
+        btn_layout = QHBoxLayout()
+        
         # Botón para limpiar filtros
         btn_limpiar = QPushButton("Limpiar Filtros")
         btn_limpiar.setProperty("tipo_filtro", tipo)
         btn_limpiar.clicked.connect(self.limpiar_filtros)
-        container_layout.addWidget(btn_limpiar)
+        btn_layout.addWidget(btn_limpiar)
+        
+        # Botón para exportar a Excel
+        btn_exportar = QPushButton("Exportar a Excel")
+        btn_exportar.setProperty("tipo_filtro", tipo)
+        btn_exportar.clicked.connect(self.exportar_filtros_a_excel)
+        btn_exportar.setToolTip("Exportar los resultados filtrados a un archivo Excel")
+        btn_exportar.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
+        btn_layout.addWidget(btn_exportar)
+        
+        container_layout.addLayout(btn_layout)
         
         # Crear tabla
         tabla = QTableWidget()
@@ -1172,9 +1191,71 @@ class MainWindow(QMainWindow):
         for anio in anios_ordenados:
             self.combo_filtro_anio.addItem(str(anio), anio)
     
+    def actualizar_tipos_gasto_combos(self):
+        """Actualizar los combos de tipos de gasto en los filtros"""
+        if not hasattr(self, 'combo_filtro_tipo_rango') or not hasattr(self, 'combo_filtro_tipo_fechas'):
+            return  # Los combos aún no han sido creados
+            
+        # Guardar selección actual en el combo de rango
+        tipo_seleccionado_rango = self.combo_filtro_tipo_rango.currentData()
+        
+        # Limpiar y actualizar combo de rango
+        self.combo_filtro_tipo_rango.clear()
+        self.combo_filtro_tipo_rango.addItem("Todos los tipos", None)
+        
+        # Agregar tipos de gasto
+        if hasattr(self, 'tipos_gasto') and self.tipos_gasto:
+            # Obtener lista de nombres de tipos de gasto
+            if isinstance(self.tipos_gasto, list):
+                if self.tipos_gasto and isinstance(self.tipos_gasto[0], dict):
+                    # Si es una lista de diccionarios, extraer los nombres
+                    nombres_tipos = [tipo.get('nombre', '') for tipo in self.tipos_gasto if isinstance(tipo, dict)]
+                else:
+                    # Si es una lista de strings
+                    nombres_tipos = [str(tipo) for tipo in self.tipos_gasto]
+            else:
+                nombres_tipos = []
+            
+            # Ordenar alfabéticamente y agregar al combo
+            for tipo in sorted(nombres_tipos):
+                self.combo_filtro_tipo_rango.addItem(tipo, tipo)
+        
+        # Restaurar selección si existe
+        if tipo_seleccionado_rango and hasattr(self, 'tipos_gasto'):
+            index = self.combo_filtro_tipo_rango.findData(tipo_seleccionado_rango)
+            if index >= 0:
+                self.combo_filtro_tipo_rango.setCurrentIndex(index)
+        
+        # Guardar selección actual en el combo de fechas
+        tipo_seleccionado_fechas = self.combo_filtro_tipo_fechas.currentData()
+        
+        # Limpiar y actualizar combo de fechas
+        self.combo_filtro_tipo_fechas.clear()
+        self.combo_filtro_tipo_fechas.addItem("Todos los tipos", None)
+        
+        # Agregar tipos de gasto (misma lógica que arriba)
+        if hasattr(self, 'tipos_gasto') and self.tipos_gasto:
+            if isinstance(self.tipos_gasto, list):
+                if self.tipos_gasto and isinstance(self.tipos_gasto[0], dict):
+                    nombres_tipos = [tipo.get('nombre', '') for tipo in self.tipos_gasto if isinstance(tipo, dict)]
+                else:
+                    nombres_tipos = [str(tipo) for tipo in self.tipos_gasto]
+            else:
+                nombres_tipos = []
+            
+            for tipo in sorted(nombres_tipos):
+                self.combo_filtro_tipo_fechas.addItem(tipo, tipo)
+        
+        # Restaurar selección si existe
+        if tipo_seleccionado_fechas and hasattr(self, 'tipos_gasto'):
+            index = self.combo_filtro_tipo_fechas.findData(tipo_seleccionado_fechas)
+            if index >= 0:
+                self.combo_filtro_tipo_fechas.setCurrentIndex(index)
+    
     def actualizar_filtros(self):
         """Actualizar los controles de filtro con los datos actuales"""
         self.inicializar_filtros()
+        self.actualizar_tipos_gasto_combos()
         # Aplicar filtros de rango por defecto al inicio
         self.aplicar_filtros_rango()
     
@@ -2218,6 +2299,243 @@ class MainWindow(QMainWindow):
             logger.error(error_msg, exc_info=True)
             QMessageBox.critical(self, "Error", error_msg)
             return False
+    
+    def exportar_filtros_a_excel(self):
+        """Exportar los datos filtrados a un archivo Excel"""
+        try:
+            # Determinar qué tabla de filtro está activa
+            sender = self.sender()
+            if not sender:
+                QMessageBox.warning(self, "Error", "No se pudo determinar el origen de la exportación.")
+                return
+                
+            tipo_filtro = sender.property("tipo_filtro")
+            if tipo_filtro == "rango":
+                tabla = self.tabla_filtro_rango
+                titulo = "Rango_de_Fechas"
+            elif tipo_filtro == "fechas":
+                tabla = self.tabla_filtro_fechas
+                titulo = "Fecha_Especifica"
+            else:
+                QMessageBox.warning(self, "Error", "Tipo de filtro no válido.")
+                return
+                
+            # Verificar si hay datos para exportar
+            if not hasattr(self, 'tabla_filtro_rango') or not hasattr(self, 'tabla_filtro_fechas'):
+                QMessageBox.warning(self, "Error", "Las tablas de filtro no están inicializadas correctamente.")
+                return
+                
+            if tabla.rowCount() == 0:
+                QMessageBox.warning(self, "Exportar a Excel", "No hay datos filtrados para exportar.")
+                return
+                
+            # Obtener la configuración
+            try:
+                config = get_config()
+                last_dir = config['APP'].get('last_export_dir', str(Path.home() / 'Documents'))
+            except Exception as e:
+                last_dir = str(Path.home() / 'Documents')
+            
+            # Nombre de archivo predeterminado con la fecha actual
+            default_filename = f"Facturas_Filtro_{titulo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            default_path = str(Path(last_dir) / default_filename)
+            
+            # Solicitar al usuario la ubicación para guardar el archivo
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                f"Exportar {titulo.replace('_', ' ')} a Excel",
+                default_path,
+                "Archivos Excel (*.xlsx);;Todos los archivos (*)"
+            )
+            
+            if not file_path:
+                return  # Usuario canceló el diálogo
+            
+            # Asegurarse de que el archivo tenga la extensión .xlsx
+            if not file_path.lower().endswith('.xlsx'):
+                file_path += '.xlsx'
+                
+            # Crear un nuevo libro de Excel
+            wb = Workbook()
+            
+            # Eliminar la hoja por defecto
+            for sheet in wb.sheetnames:
+                wb.remove(wb[sheet])
+            
+            # Crear una nueva hoja con el título adecuado
+            ws = wb.create_sheet(title=titulo[:31])  # Limitar a 31 caracteres para Excel
+            
+            # Verificar que la hoja se creó correctamente
+            if not ws:
+                raise Exception("No se pudo crear la hoja de cálculo")
+            
+            # Estilos
+            header_font = Font(bold=True, color="FFFFFF")
+            header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+            
+            # Agregar título
+            ws.append([f"Reporte de Facturas - {titulo}"])
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+            titulo_cell = ws.cell(row=1, column=1)
+            titulo_cell.font = Font(size=14, bold=True)
+            titulo_cell.alignment = Alignment(horizontal='center')
+            
+            # Agregar rango de fechas o filtro aplicado
+            if tipo_filtro == "rango":
+                fecha_desde = self.date_edit_desde.date().toString("dd/MM/yyyy")
+                fecha_hasta = self.date_edit_hasta.date().toString("dd/MM/yyyy")
+                tipo_gasto = self.combo_filtro_tipo_rango.currentText()
+                ws.append([f"Filtro: Desde {fecha_desde} hasta {fecha_hasta}"])
+                if tipo_gasto != "Todos los tipos":
+                    ws.append([f"Tipo de gasto: {tipo_gasto}"])
+            else:  # fechas
+                anio = self.combo_filtro_anio.currentText()
+                mes = self.combo_filtro_mes.currentText()
+                dia = self.combo_filtro_dia.currentText()
+                tipo_gasto = self.combo_filtro_tipo_fechas.currentText()
+                
+                filtro_texto = []
+                if anio != "Todos los años":
+                    filtro_texto.append(f"Año: {anio}")
+                if mes != "Todos los meses":
+                    filtro_texto.append(f"Mes: {mes}")
+                if dia != "Todos los días":
+                    filtro_texto.append(f"Día: {dia}")
+                if tipo_gasto != "Todos los tipos":
+                    filtro_texto.append(f"Tipo: {tipo_gasto}")
+                    
+                ws.append([" | ".join(filtro_texto) if filtro_texto else "Sin filtros"])
+            
+            # Agregar encabezados
+            headers = ["Fecha", "Tipo", "Descripción", "Valor (COP)"]
+            header_row = ws.max_row + 1
+            
+            # Escribir encabezados manualmente para asegurar la posición correcta
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=header_row, column=col, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+            
+            # Agregar datos de la tabla
+            total = 0
+            data_start_row = header_row + 1  # Empezar después de los encabezados
+            
+            # Primero obtener todos los datos
+            datos = []
+            for row in range(tabla.rowCount()):
+                fecha = tabla.item(row, 0).text()
+                tipo = tabla.item(row, 1).text()
+                descripcion = tabla.item(row, 2).text()
+                valor_texto = tabla.item(row, 3).text().replace('$', '').replace('COP', '').replace('.', '').replace(',', '.').strip()
+                
+                try:
+                    valor = float(valor_texto)
+                    total += valor
+                except (ValueError, AttributeError):
+                    valor = 0
+                
+                datos.append([fecha, tipo, descripcion, valor])
+            
+            # Escribir todos los datos de una vez
+            for fila in datos:
+                ws.append(fila)
+            
+            data_end_row = ws.max_row  # Última fila de datos
+            
+            # Formatear columna de valor como moneda (solo la columna de valor)
+            for row in ws.iter_rows(min_row=data_start_row, max_row=data_end_row, min_col=4, max_col=4):
+                for cell in row:
+                    cell.number_format = '#,##0.00" COP"'
+            
+            # Agregar fila de total (solo una vez)
+            if not hasattr(self, '_total_added'):
+                total_row = ws.max_row + 1
+                ws.cell(row=total_row, column=3, value="Total:")
+                total_cell = ws.cell(row=total_row, column=4, value=total)
+                total_cell.number_format = '#,##0.00" COP"'
+                
+                # Aplicar negrita solo a la fila de total
+                for col in range(1, 5):
+                    ws.cell(row=total_row, column=col).font = Font(bold=True)
+                
+                # Marcar que ya se agregó el total
+                self._total_added = True
+            
+            # Usar data_end_row para la tabla (sin incluir el total)
+            table_end_row = data_end_row
+            
+            # Ajustar ancho de columnas
+            for col_idx in range(1, 5):  # 4 columnas: Fecha, Tipo, Descripción, Valor
+                max_length = 0
+                column_letter = get_column_letter(col_idx)
+                
+                # Obtener el ancho máximo del contenido de la columna
+                for row in range(1, ws.max_row + 1):
+                    cell = ws.cell(row=row, column=col_idx)
+                    if cell.value is not None:
+                        try:
+                            # Verificar si la celda está en un rango combinado
+                            is_merged = any(cell.coordinate in merged_range for merged_range in ws.merged_cells.ranges)
+                            if not is_merged:
+                                value_length = len(str(cell.value).encode('utf-8'))
+                                if value_length > max_length:
+                                    max_length = value_length
+                        except Exception as e:
+                            print(f"Error procesando celda {cell.coordinate}: {e}")
+                
+                # Establecer el ancho de la columna
+                if max_length > 0:
+                    adjusted_width = (max_length + 4) * 1.1
+                    ws.column_dimensions[column_letter].width = min(adjusted_width, 40)
+                else:
+                    ws.column_dimensions[column_letter].width = 15  # Ancho por defecto
+            
+            # Crear tabla con formato (excluyendo la fila de total)
+            if tabla.rowCount() > 0:
+                # Usar las filas ya calculadas
+                first_data_row = header_row  # Incluye los encabezados
+                last_data_row = data_end_row  # Hasta la última fila de datos
+                
+                # Crear la referencia de rango para la tabla
+                table_ref = f"A{first_data_row}:D{last_data_row}"
+                
+                # Crear la tabla con el rango ajustado
+                table = Table(displayName=f"TablaFiltro{tipo_filtro.capitalize()}", ref=table_ref)
+                
+                # Configurar el estilo de la tabla
+                style = TableStyleInfo(
+                    name="TableStyleMedium9",
+                    showFirstColumn=False,
+                    showLastColumn=False,
+                    showRowStripes=True,
+                    showColumnStripes=False
+                )
+                table.tableStyleInfo = style
+                ws.add_table(table)
+            
+            # Guardar el archivo
+            wb.save(file_path)
+            
+            # Actualizar el directorio de exportación en la configuración
+            config['APP']['last_export_dir'] = str(Path(file_path).parent)
+            save_config(config)
+            
+            QMessageBox.information(
+                self,
+                "Exportación exitosa",
+                f"Se exportaron {tabla.rowCount()} facturas a:\n{file_path}"
+            )
+            
+            # Abrir el archivo después de exportar
+            try:
+                os.startfile(file_path)
+            except:
+                pass  # No se pudo abrir el archivo, pero la exportación fue exitosa
+                
+        except Exception as e:
+            error_msg = f"Error al exportar a Excel: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            QMessageBox.critical(self, "Error", error_msg)
     
     def exportar_a_excel(self):
         """Exportar los datos a un archivo Excel con formato de tabla"""
