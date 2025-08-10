@@ -333,17 +333,25 @@ class MainWindow(QMainWindow):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Botón para alternar modo oscuro/claro
-        self.btn_tema = QPushButton("Modo Oscuro")
+        self.btn_tema = QPushButton(" Tema")
         self.btn_tema.setToolTip("Haz clic para cambiar entre modo claro y oscuro")
-        self.btn_tema.setFixedSize(120, 32)
+        self.btn_tema.setFixedSize(100, 30)
+        # Usar emoji como ícono inicial
+        self.btn_tema.setIcon(QIcon.fromTheme("weather-clear"))  # Intenta con el tema primero
+        if self.btn_tema.icon().isNull():
+            # Si no hay tema, creamos un ícono con texto
+            self.btn_tema.setText("🌞 Tema")  # Texto de respaldo
+            self.btn_tema.setIcon(QIcon())  # Ícono vacío para forzar el texto
         self.btn_tema.setStyleSheet("""
             QPushButton {
                 background-color: #6c757d;
                 color: white;
                 border: none;
                 border-radius: 4px;
-                padding: 5px 10px;
-                font-weight: bold;
+                padding: 2px 8px;
+                font-size: 11px;
+                text-align: left;
+                padding-left: 5px;
             }
             QPushButton:hover {
                 background-color: #5a6268;
@@ -374,6 +382,7 @@ class MainWindow(QMainWindow):
         self.tab_registro = QWidget()
         self.tabs.addTab(self.tab_registro, "Registrar Factura")
         self.setup_registro_tab()
+        
         
         # Pestaña de resúmenes (antes Filtros Avanzados)
         self.tab_filtros = QWidget()
@@ -3927,8 +3936,50 @@ class MainWindow(QMainWindow):
     def cambiar_tema(self):
         """Alternar entre modo oscuro y claro"""
         self.tema_oscuro = not self.tema_oscuro
-        # Actualizar el texto del botón según el tema
-        self.btn_tema.setText("Modo Claro" if self.tema_oscuro else "Modo Oscuro")
+        # Actualizar el ícono según el tema
+        if self.tema_oscuro:
+            # Usar el ícono de sol en negro para el modo oscuro
+            self.btn_tema.setStyleSheet("""
+                QPushButton {
+                    background-color: #6c757d;
+                    color: white;  /* Texto en blanco */
+                    border: none;
+                    border-radius: 4px;
+                    padding: 2px 8px;
+                    font-size: 11px;
+                    text-align: left;
+                    padding-left: 5px;
+                }
+                QPushButton:hover {
+                    background-color: #5a6268;
+                }
+                QPushButton:pressed {
+                    background-color: #4e555b;
+                }
+            """)
+            # Usar emoji de sol negro (U+1F319) en lugar del sol amarillo
+            self.btn_tema.setText("🌙 Claro")  # Usamos luna para oscuro, ya que el sol negro no es estándar
+        else:
+            # Restaurar estilo normal para modo claro
+            self.btn_tema.setStyleSheet("""
+                QPushButton {
+                    background-color: #6c757d;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 2px 8px;
+                    font-size: 11px;
+                    text-align: left;
+                    padding-left: 5px;
+                }
+                QPushButton:hover {
+                    background-color: #5a6268;
+                }
+                QPushButton:pressed {
+                    background-color: #4e555b;
+                }
+            """)
+            self.btn_tema.setText("🌙 Oscuro")  # Luna en blanco
         self.aplicar_tema()
         self.guardar_preferencia_tema()
     
