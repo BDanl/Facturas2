@@ -430,6 +430,7 @@ class MainWindow(QMainWindow):
         # Botón de guardar
         self.btn_guardar = QPushButton("Guardar Factura")
         self.btn_guardar.clicked.connect(self.guardar_factura)
+        self.btn_guardar.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
         
         # Agregar widgets al layout
         layout.addRow("Tipo de Gasto:", self.cmb_tipo_gasto)
@@ -717,6 +718,19 @@ class MainWindow(QMainWindow):
         btn_limpiar = QPushButton("Limpiar Filtros")
         btn_limpiar.setProperty("tipo_filtro", tipo)
         btn_limpiar.clicked.connect(self.limpiar_filtros)
+        # Añadir icono de limpiar
+        clear_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DialogResetButton)
+        btn_limpiar.setIcon(clear_icon)
+        btn_limpiar.setToolTip("Restablecer todos los filtros a sus valores predeterminados")
+        btn_limpiar.setStyleSheet("""
+            QPushButton {
+                padding: 5px 10px;
+                min-width: 120px;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f0;
+            }
+        """)
         btn_layout.addWidget(btn_limpiar)
         
         # Botón para exportar a Excel
@@ -813,6 +827,7 @@ class MainWindow(QMainWindow):
         self.menu_importar.setToolTip("Importar facturas desde diferentes formatos")
         self.menu_importar.setMinimumWidth(400)  # Ancho mínimo de 350 píxeles
         self.menu_importar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        self.menu_importar.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowDown))
         self.menu_importar.setStyleSheet("""
             QPushButton {
                 padding: 8px 15px;
@@ -851,6 +866,7 @@ class MainWindow(QMainWindow):
         self.btn_limpiar_todo.setToolTip("Eliminar todas las facturas")
         self.btn_limpiar_todo.setMinimumWidth(400)  # Ancho mínimo de 350 píxeles
         self.btn_limpiar_todo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        self.btn_limpiar_todo.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogResetButton))
         self.btn_limpiar_todo.setStyleSheet("""
             QPushButton {
                 padding: 8px 15px;
@@ -868,6 +884,7 @@ class MainWindow(QMainWindow):
         self.btn_exportar.setToolTip("Exportar facturas a un archivo Excel")
         self.btn_exportar.setMinimumWidth(400)  # Ancho mínimo de 350 píxeles
         self.btn_exportar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        self.btn_exportar.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
         self.btn_exportar.setStyleSheet("""
             QPushButton {
                 padding: 8px 15px;
