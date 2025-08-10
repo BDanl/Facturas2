@@ -18,6 +18,7 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side, numbers
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 # Importaciones de PyQt6
+from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QLineEdit, QPushButton, QComboBox, QDateEdit, QAbstractItemView, 
                              QTableWidget, QTableWidgetItem, QTabWidget, QMessageBox, 
@@ -568,6 +569,23 @@ class MainWindow(QMainWindow):
         grupo_filtros = QGroupBox("Filtrar por")
         form_filtros = QFormLayout()
         
+        # Filtro por rango de fechas
+        self.date_edit_desde = QDateEdit()
+        self.date_edit_desde.setCalendarPopup(True)
+        self.date_edit_desde.setDisplayFormat("dd/MM/yyyy")
+        # Establecer fecha inicial como primer día del mes actual
+        today = QDate.currentDate()
+        first_day_of_month = QDate(today.year(), today.month(), 1)
+        self.date_edit_desde.setDate(first_day_of_month)
+        self.date_edit_desde.dateChanged.connect(self.aplicar_filtros)
+        
+        self.date_edit_hasta = QDateEdit()
+        self.date_edit_hasta.setCalendarPopup(True)
+        self.date_edit_hasta.setDisplayFormat("dd/MM/yyyy")
+        # Establecer fecha final como hoy
+        self.date_edit_hasta.setDate(today)
+        self.date_edit_hasta.dateChanged.connect(self.aplicar_filtros)
+        
         # Filtro por año
         self.combo_filtro_anio = QComboBox()
         self.combo_filtro_anio.addItem("Todos los años", None)
@@ -607,6 +625,8 @@ class MainWindow(QMainWindow):
         btn_limpiar.clicked.connect(self.limpiar_filtros)
         
         # Agregar controles al formulario
+        form_filtros.addRow("Fecha desde:", self.date_edit_desde)
+        form_filtros.addRow("Fecha hasta:", self.date_edit_hasta)
         form_filtros.addRow("Año:", self.combo_filtro_anio)
         form_filtros.addRow("Mes:", self.combo_filtro_mes)
         form_filtros.addRow("Día:", self.combo_filtro_dia)
@@ -1087,6 +1107,14 @@ class MainWindow(QMainWindow):
     def aplicar_filtros(self):
         """Aplicar los filtros seleccionados"""
         try:
+            # Obtener fechas del rango
+            qdate_desde = self.date_edit_desde.date()
+            qdate_hasta = self.date_edit_hasta.date()
+            
+            # Convertir QDate a datetime para comparación
+            fecha_desde = datetime(qdate_desde.year(), qdate_desde.month(), qdate_desde.day())
+            fecha_hasta = datetime(qdate_hasta.year(), qdate_hasta.month(), qdate_hasta.day(), 23, 59, 59)
+            
             anio = self.combo_filtro_anio.currentData()
             mes = self.combo_filtro_mes.currentIndex()  # 0 = Todos, 1-12 = meses
             dia = self.combo_filtro_dia.currentIndex()  # 0 = Todos, 1-31 = días
@@ -1110,6 +1138,10 @@ class MainWindow(QMainWindow):
                         except ValueError:
                             logger.warning(f"Formato de fecha no reconocido: {factura['fecha']}")
                             continue
+                    
+                    # Verificar rango de fechas
+                    if fecha < fecha_desde or fecha > fecha_hasta:
+                        continue
                     
                     # Verificar año
                     if anio is not None and fecha.year != anio:
@@ -1141,6 +1173,13 @@ class MainWindow(QMainWindow):
     
     def limpiar_filtros(self):
         """Limpiar todos los filtros"""
+        # Restablecer fechas al rango por defecto (primero del mes actual hasta hoy)
+        today = QDate.currentDate()
+        first_day_of_month = QDate(today.year(), today.month(), 1)
+        self.date_edit_desde.setDate(first_day_of_month)
+        self.date_edit_hasta.setDate(today)
+        
+        # Restablecer otros filtros
         self.combo_filtro_anio.setCurrentIndex(0)
         self.combo_filtro_mes.setCurrentIndex(0)
         self.combo_filtro_dia.setCurrentIndex(0)
