@@ -562,34 +562,55 @@ class MainWindow(QMainWindow):
         self.actualizar_resumen_anual()
     
     def setup_filtros_tab(self):
-        """Configurar la pestaña de filtros avanzados"""
+        """Configurar la pestaña de filtros avanzados con dos pestañas de filtrado"""
         layout = QVBoxLayout(self.tab_filtros)
         
-        # Grupo para filtros
-        grupo_filtros = QGroupBox("Filtrar por")
-        form_filtros = QFormLayout()
+        # Crear un QTabWidget para los diferentes tipos de filtros
+        self.tab_widget_filtros = QTabWidget()
+        
+        # Tab 1: Filtro por rango de fechas y tipo
+        tab_rango = QWidget()
+        tab_rango_layout = QVBoxLayout(tab_rango)
+        
+        # Grupo para filtros por rango
+        grupo_rango = QGroupBox("Filtrar por rango de fechas")
+        form_rango = QFormLayout()
         
         # Filtro por rango de fechas
         self.date_edit_desde = QDateEdit()
         self.date_edit_desde.setCalendarPopup(True)
         self.date_edit_desde.setDisplayFormat("dd/MM/yyyy")
-        # Establecer fecha inicial como primer día del mes actual
         today = QDate.currentDate()
         first_day_of_month = QDate(today.year(), today.month(), 1)
         self.date_edit_desde.setDate(first_day_of_month)
-        self.date_edit_desde.dateChanged.connect(self.aplicar_filtros)
         
         self.date_edit_hasta = QDateEdit()
         self.date_edit_hasta.setCalendarPopup(True)
         self.date_edit_hasta.setDisplayFormat("dd/MM/yyyy")
-        # Establecer fecha final como hoy
         self.date_edit_hasta.setDate(today)
-        self.date_edit_hasta.dateChanged.connect(self.aplicar_filtros)
+        
+        # Filtro por tipo de gasto para la pestaña de rango
+        self.combo_filtro_tipo_rango = QComboBox()
+        self.combo_filtro_tipo_rango.addItem("Todos los tipos", None)
+        
+        # Agregar controles al formulario de rango
+        form_rango.addRow("Fecha desde:", self.date_edit_desde)
+        form_rango.addRow("Fecha hasta:", self.date_edit_hasta)
+        form_rango.addRow("Tipo de gasto:", self.combo_filtro_tipo_rango)
+        
+        grupo_rango.setLayout(form_rango)
+        
+        # Tab 2: Filtro por año, mes, día y tipo
+        tab_fechas = QWidget()
+        tab_fechas_layout = QVBoxLayout(tab_fechas)
+        
+        # Grupo para filtros por fechas específicas
+        grupo_fechas = QGroupBox("Filtrar por fecha específica")
+        form_fechas = QFormLayout()
         
         # Filtro por año
         self.combo_filtro_anio = QComboBox()
         self.combo_filtro_anio.addItem("Todos los años", None)
-        self.combo_filtro_anio.currentIndexChanged.connect(self.aplicar_filtros)
         
         # Filtro por mes
         self.combo_filtro_mes = QComboBox()
@@ -598,82 +619,134 @@ class MainWindow(QMainWindow):
             "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
             "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
         ], 1)])
-        self.combo_filtro_mes.currentIndexChanged.connect(self.aplicar_filtros)
         
         # Filtro por día
         self.combo_filtro_dia = QComboBox()
         self.combo_filtro_dia.addItem("Todos los días", None)
         self.combo_filtro_dia.addItems([f"{i:02d}" for i in range(1, 32)])
-        self.combo_filtro_dia.currentIndexChanged.connect(self.aplicar_filtros)
         
-        # Filtro por tipo de gasto
-        self.combo_filtro_tipo = QComboBox()
-        self.combo_filtro_tipo.addItem("Todos los tipos", None)
-        try:
-            tipos_gasto = self.db.obtener_tipos_gasto()
-            for tipo in tipos_gasto:
-                self.combo_filtro_tipo.addItem(tipo['nombre'])
-        except Exception as e:
-            # En caso de error, cargar valores por defecto
-            logging.error(f"Error al cargar tipos de gasto en filtros: {str(e)}")
-            self.combo_filtro_tipo.addItems(["Mercado", "Transporte", "Compra tienda", 
-                                          "Farmacia", "Varios", "Gastos urgentes"])
-        self.combo_filtro_tipo.currentIndexChanged.connect(self.aplicar_filtros)
+        # Filtro por tipo de gasto para la pestaña de fechas
+        self.combo_filtro_tipo_fechas = QComboBox()
+        self.combo_filtro_tipo_fechas.addItem("Todos los tipos", None)
+        
+        # Agregar controles al formulario de fechas
+        form_fechas.addRow("Año:", self.combo_filtro_anio)
+        form_fechas.addRow("Mes:", self.combo_filtro_mes)
+        form_fechas.addRow("Día:", self.combo_filtro_dia)
+        form_fechas.addRow("Tipo de gasto:", self.combo_filtro_tipo_fechas)
+        
+        grupo_fechas.setLayout(form_fechas)
+        
+        # Crear tablas independientes para cada pestaña
+        self.crear_tabla_filtros(tab_rango_layout, grupo_rango, "rango")
+        self.crear_tabla_filtros(tab_fechas_layout, grupo_fechas, "fechas")
+        
+        # Conectar señales después de crear las tablas
+        self.conectar_senales_filtros()
+        
+        # Agregar pestañas al tab widget
+        self.tab_widget_filtros.addTab(tab_rango, "Rango de fechas")
+        self.tab_widget_filtros.addTab(tab_fechas, "Fecha específica")
+        
+        # Conectar el cambio de pestaña para actualizar la tabla visible
+        self.tab_widget_filtros.currentChanged.connect(self.cambiar_pestana_filtros)
+        
+        # Agregar todo al layout principal
+        layout.addWidget(self.tab_widget_filtros)
+        
+        # Inicializar filtros
+        self.inicializar_filtros()
+        
+        # Aplicar filtros de rango por defecto
+        self.aplicar_filtros_rango()
+        
+        # Mostrar la pestaña activa
+        self.cambiar_pestana_filtros(0)
+    
+    def crear_tabla_filtros(self, layout, group_widget, tipo):
+        """Crea una tabla independiente para cada tipo de filtro"""
+        # Crear un contenedor para la tabla y sus botones
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        
+        # Agregar el grupo de filtros
+        container_layout.addWidget(group_widget)
         
         # Botón para limpiar filtros
         btn_limpiar = QPushButton("Limpiar Filtros")
+        btn_limpiar.setProperty("tipo_filtro", tipo)
         btn_limpiar.clicked.connect(self.limpiar_filtros)
+        container_layout.addWidget(btn_limpiar)
         
-        # Agregar controles al formulario
-        form_filtros.addRow("Fecha desde:", self.date_edit_desde)
-        form_filtros.addRow("Fecha hasta:", self.date_edit_hasta)
-        form_filtros.addRow("Año:", self.combo_filtro_anio)
-        form_filtros.addRow("Mes:", self.combo_filtro_mes)
-        form_filtros.addRow("Día:", self.combo_filtro_dia)
-        form_filtros.addRow("Tipo de gasto:", self.combo_filtro_tipo)
-        form_filtros.addRow(btn_limpiar)
-        
-        grupo_filtros.setLayout(form_filtros)
-        
-        # Tabla para mostrar resultados filtrados
-        self.tabla_filtrada = QTableWidget()
-        self.tabla_filtrada.setColumnCount(4)
-        self.tabla_filtrada.setHorizontalHeaderLabels(["Fecha", "Tipo", "Descripción", "Valor"])
+        # Crear tabla
+        tabla = QTableWidget()
+        tabla.setColumnCount(4)
+        tabla.setHorizontalHeaderLabels(["Fecha", "Tipo", "Descripción", "Valor"])
         
         # Configurar el ancho de las columnas
-        header = self.tabla_filtrada.horizontalHeader()
+        header = tabla.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Fecha
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Tipo
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)  # Descripción
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Valor
         
         # Configurar edición de celdas
-        self.tabla_filtrada.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed)
+        tabla.setEditTriggers(
+            QTableWidget.EditTrigger.DoubleClicked | 
+            QTableWidget.EditTrigger.EditKeyPressed
+        )
         
         # Configurar delegado para columnas editables (excepto tipo)
-        delegate = EditableDelegate(self.tabla_filtrada, editable_columns=[0, 2, 3])  # Fecha, Descripción, Valor
+        delegate = EditableDelegate(tabla, editable_columns=[0, 2, 3])  # Fecha, Descripción, Valor
         
         # Configurar delegado personalizado para la columna de tipo (índice 1)
-        self.tipo_delegate_filtros = TipoGastoDelegate(
-            self.tabla_filtrada, 
+        tipo_delegate = TipoGastoDelegate(
+            tabla,
             tipos_gasto=self.tipos_gasto,
             column_index=1  # Índice de la columna 'tipo' en la tabla filtrada
         )
-        self.tabla_filtrada.setItemDelegateForColumn(1, self.tipo_delegate_filtros)
+        tabla.setItemDelegateForColumn(1, tipo_delegate)
         
         # Asignar el delegado general para las demás columnas
-        self.tabla_filtrada.setItemDelegate(delegate)
+        tabla.setItemDelegate(delegate)
         
         # Conectar la señal itemChanged al manejador de cambios
-        self.tabla_filtrada.itemChanged.connect(self.guardar_cambios_celda)
+        tabla.itemChanged.connect(self.guardar_cambios_celda)
         
-        # Agregar widgets al layout principal
-        layout.addWidget(grupo_filtros)
-        layout.addWidget(self.tabla_filtrada)
+        # Guardar referencia a la tabla según el tipo
+        if tipo == "rango":
+            self.tabla_filtro_rango = tabla
+            self.tabla_filtro_rango.setProperty("tipo_filtro", "rango")
+        else:  # fechas
+            self.tabla_filtro_fechas = tabla
+            self.tabla_filtro_fechas.setProperty("tipo_filtro", "fechas")
         
-        # Inicializar filtros y aplicar automáticamente
-        self.inicializar_filtros()
-        self.aplicar_filtros()
+        # Agregar la tabla al contenedor
+        container_layout.addWidget(tabla)
+        
+        # Agregar el contenedor al layout de la pestaña
+        layout.addWidget(container)
+    
+    def conectar_senales_filtros(self):
+        """Conectar las señales de los controles de filtro"""
+        # Conectar señales para la pestaña de rango
+        self.date_edit_desde.dateChanged.connect(self.aplicar_filtros_rango)
+        self.date_edit_hasta.dateChanged.connect(self.aplicar_filtros_rango)
+        self.combo_filtro_tipo_rango.currentIndexChanged.connect(self.aplicar_filtros_rango)
+        
+        # Conectar señales para la pestaña de fechas
+        self.combo_filtro_anio.currentIndexChanged.connect(self.aplicar_filtros_fechas)
+        self.combo_filtro_mes.currentIndexChanged.connect(self.aplicar_filtros_fechas)
+        self.combo_filtro_dia.currentIndexChanged.connect(self.aplicar_filtros_fechas)
+        self.combo_filtro_tipo_fechas.currentIndexChanged.connect(self.aplicar_filtros_fechas)
+    
+    def cambiar_pestana_filtros(self, index):
+        """Se llama cuando se cambia entre las pestañas de filtros"""
+        # Aplicar los filtros correspondientes a la pestaña seleccionada
+        if index == 0:  # Rango de fechas
+            self.aplicar_filtros_rango()
+        else:  # Fecha específica
+            self.aplicar_filtros_fechas()
     
     def setup_lista_tab(self):
         """Configurar la pestaña de lista de facturas"""
@@ -1102,10 +1175,11 @@ class MainWindow(QMainWindow):
     def actualizar_filtros(self):
         """Actualizar los controles de filtro con los datos actuales"""
         self.inicializar_filtros()
-        self.aplicar_filtros()
+        # Aplicar filtros de rango por defecto al inicio
+        self.aplicar_filtros_rango()
     
-    def aplicar_filtros(self):
-        """Aplicar los filtros seleccionados"""
+    def aplicar_filtros_rango(self):
+        """Aplicar los filtros de la pestaña de rango de fechas"""
         try:
             # Obtener fechas del rango
             qdate_desde = self.date_edit_desde.date()
@@ -1115,10 +1189,8 @@ class MainWindow(QMainWindow):
             fecha_desde = datetime(qdate_desde.year(), qdate_desde.month(), qdate_desde.day())
             fecha_hasta = datetime(qdate_hasta.year(), qdate_hasta.month(), qdate_hasta.day(), 23, 59, 59)
             
-            anio = self.combo_filtro_anio.currentData()
-            mes = self.combo_filtro_mes.currentIndex()  # 0 = Todos, 1-12 = meses
-            dia = self.combo_filtro_dia.currentIndex()  # 0 = Todos, 1-31 = días
-            tipo = self.combo_filtro_tipo.currentText() if self.combo_filtro_tipo.currentIndex() > 0 else None
+            # Obtener el tipo de gasto seleccionado
+            tipo = self.combo_filtro_tipo_rango.currentData()
             
             # Filtrar facturas
             facturas_filtradas = []
@@ -1132,7 +1204,6 @@ class MainWindow(QMainWindow):
                     try:
                         fecha = datetime.strptime(factura['fecha'], '%d/%m/%Y')
                     except ValueError:
-                        # Intentar con otro formato de fecha si es necesario
                         try:
                             fecha = datetime.strptime(factura['fecha'], '%Y-%m-%d')
                         except ValueError:
@@ -1142,6 +1213,49 @@ class MainWindow(QMainWindow):
                     # Verificar rango de fechas
                     if fecha < fecha_desde or fecha > fecha_hasta:
                         continue
+                    
+                    # Verificar tipo de gasto
+                    if tipo is not None and factura.get('tipo') != tipo:
+                        continue
+                    
+                    facturas_filtradas.append(factura)
+                except Exception as e:
+                    logger.error(f"Error al procesar factura: {str(e)}", exc_info=True)
+                    continue
+            
+            # Mostrar resultados en la tabla de rango
+            self.mostrar_resultados_filtrados(facturas_filtradas, self.tabla_filtro_rango)
+            
+        except Exception as e:
+            logger.error(f"Error en aplicar_filtros_rango: {str(e)}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Se produjo un error al aplicar los filtros: {str(e)}")
+    
+    def aplicar_filtros_fechas(self):
+        """Aplicar los filtros de la pestaña de fechas específicas"""
+        try:
+            # Obtener valores de los filtros
+            anio = self.combo_filtro_anio.currentData()
+            mes = self.combo_filtro_mes.currentIndex()  # 0 = Todos, 1-12 = meses
+            dia = self.combo_filtro_dia.currentIndex()  # 0 = Todos, 1-31 = días
+            tipo = self.combo_filtro_tipo_fechas.currentData()
+            
+            # Filtrar facturas
+            facturas_filtradas = []
+            for factura in self.facturas:
+                try:
+                    # Verificar si la factura tiene el formato de fecha esperado
+                    if 'fecha' not in factura or not isinstance(factura['fecha'], str):
+                        continue
+                        
+                    # Manejar diferentes formatos de fecha
+                    try:
+                        fecha = datetime.strptime(factura['fecha'], '%d/%m/%Y')
+                    except ValueError:
+                        try:
+                            fecha = datetime.strptime(factura['fecha'], '%Y-%m-%d')
+                        except ValueError:
+                            logger.warning(f"Formato de fecha no reconocido: {factura['fecha']}")
+                            continue
                     
                     # Verificar año
                     if anio is not None and fecha.year != anio:
@@ -1155,7 +1269,7 @@ class MainWindow(QMainWindow):
                     if dia > 0 and fecha.day != dia:  # Si no es "Todos los días"
                         continue
                     
-                    # Verificar tipo
+                    # Verificar tipo de gasto
                     if tipo is not None and factura.get('tipo') != tipo:
                         continue
                     
@@ -1164,48 +1278,79 @@ class MainWindow(QMainWindow):
                     logger.error(f"Error al procesar factura: {str(e)}", exc_info=True)
                     continue
             
-            # Mostrar resultados solo si hay cambios para evitar actualizaciones innecesarias
-            self.mostrar_resultados_filtrados(facturas_filtradas)
+            # Mostrar resultados en la tabla de fechas
+            self.mostrar_resultados_filtrados(facturas_filtradas, self.tabla_filtro_fechas)
             
         except Exception as e:
-            logger.error(f"Error en aplicar_filtros: {str(e)}", exc_info=True)
+            logger.error(f"Error en aplicar_filtros_fechas: {str(e)}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Se produjo un error al aplicar los filtros: {str(e)}")
     
     def limpiar_filtros(self):
         """Limpiar todos los filtros"""
-        # Restablecer fechas al rango por defecto (primero del mes actual hasta hoy)
-        today = QDate.currentDate()
-        first_day_of_month = QDate(today.year(), today.month(), 1)
-        self.date_edit_desde.setDate(first_day_of_month)
-        self.date_edit_hasta.setDate(today)
+        # Obtener la pestaña actual
+        tab_widget = self.tab_filtros.findChild(QTabWidget)
+        if tab_widget is None:
+            return
+            
+        current_tab = tab_widget.currentIndex()
         
-        # Restablecer otros filtros
-        self.combo_filtro_anio.setCurrentIndex(0)
-        self.combo_filtro_mes.setCurrentIndex(0)
-        self.combo_filtro_dia.setCurrentIndex(0)
-        self.combo_filtro_tipo.setCurrentIndex(0)
-        self.aplicar_filtros()
+        if current_tab == 0:  # Pestaña de rango de fechas
+            # Restablecer fechas al rango por defecto (primero del mes actual hasta hoy)
+            today = QDate.currentDate()
+            first_day_of_month = QDate(today.year(), today.month(), 1)
+            self.date_edit_desde.setDate(first_day_of_month)
+            self.date_edit_hasta.setDate(today)
+            
+            # Restablecer tipo de gasto
+            self.combo_filtro_tipo_rango.setCurrentIndex(0)
+            
+            # Aplicar filtros
+            self.aplicar_filtros_rango()
+            
+        else:  # Pestaña de fechas específicas
+            # Restablecer todos los filtros de fecha
+            self.combo_filtro_anio.setCurrentIndex(0)
+            self.combo_filtro_mes.setCurrentIndex(0)
+            self.combo_filtro_dia.setCurrentIndex(0)
+            self.combo_filtro_tipo_fechas.setCurrentIndex(0)
+            
+            # Aplicar filtros
+            self.aplicar_filtros_fechas()
     
-    def mostrar_resultados_filtrados(self, facturas):
-        """Mostrar las facturas filtradas en la tabla"""
+    def mostrar_resultados_filtrados(self, facturas, tabla_destino=None):
+        """Mostrar las facturas filtradas en la tabla especificada
+        
+        Args:
+            facturas: Lista de facturas a mostrar
+            tabla_destino: Tabla donde se mostrarán los resultados (opcional, por defecto usa la tabla activa)
+        """
         try:
+            # Determinar qué tabla usar
+            if tabla_destino is None:
+                # Si no se especifica, usar la tabla de la pestaña activa
+                current_tab = self.tab_widget_filtros.currentIndex()
+                if current_tab == 0:  # Rango de fechas
+                    tabla_destino = self.tabla_filtro_rango
+                else:  # Fecha específica
+                    tabla_destino = self.tabla_filtro_fechas
+            
             # Cerrar cualquier editor activo antes de actualizar
-            if self.tabla_filtrada.currentItem() is not None:
-                self.tabla_filtrada.closePersistentEditor(self.tabla_filtrada.currentItem())
+            if tabla_destino.currentItem() is not None:
+                tabla_destino.closePersistentEditor(tabla_destino.currentItem())
                 
             # Desconectar la señal temporalmente para evitar múltiples llamadas
             try:
-                self.tabla_filtrada.itemChanged.disconnect(self.guardar_cambios_celda)
+                tabla_destino.itemChanged.disconnect(self.guardar_cambios_celda)
             except:
                 pass  # La señal no estaba conectada
                 
             # Configurar el número de filas
-            self.tabla_filtrada.setRowCount(0)  # Limpiar la tabla
-            self.tabla_filtrada.setRowCount(len(facturas) + 1)  # +1 para la fila de total
+            tabla_destino.setRowCount(0)  # Limpiar la tabla
+            tabla_destino.setRowCount(len(facturas) + 1)  # +1 para la fila de total
             
             # Establecer altura de fila para mejor legibilidad
             for i in range(len(facturas) + 1):
-                self.tabla_filtrada.setRowHeight(i, 30)  # Aumentar altura de fila a 30 píxeles
+                tabla_destino.setRowHeight(i, 30)  # Aumentar altura de fila a 30 píxeles
             
             # Llenar la tabla con los datos de las facturas
             for i, factura in enumerate(facturas):
@@ -1213,25 +1358,25 @@ class MainWindow(QMainWindow):
                     continue
                 
                 try:
-                    # Fecha (no editable)
+                    # Fecha (editable)
                     fecha = factura.get('fecha', '')
                     fecha_item = QTableWidgetItem(str(fecha))
                     factura_id = factura.get('id')
                     if factura_id is not None:
                         fecha_item.setData(Qt.ItemDataRole.UserRole, factura_id)  # Store the ID for updates
-                    self.tabla_filtrada.setItem(i, 0, fecha_item)
+                    tabla_destino.setItem(i, 0, fecha_item)
                     
                     # Tipo (editable con dropdown)
                     tipo = factura.get('tipo', '')
                     tipo_item = QTableWidgetItem(str(tipo))
                     tipo_item.setFlags(tipo_item.flags() | Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsEnabled)
-                    self.tabla_filtrada.setItem(i, 1, tipo_item)
+                    tabla_destino.setItem(i, 1, tipo_item)
                     
                     # Descripción (editable)
                     descripcion = factura.get('descripcion', '')
                     desc_item = QTableWidgetItem(str(descripcion))
                     desc_item.setFlags(desc_item.flags() | Qt.ItemFlag.ItemIsEditable)
-                    self.tabla_filtrada.setItem(i, 2, desc_item)
+                    tabla_destino.setItem(i, 2, desc_item)
                     
                     # Valor (editable)
                     valor = float(factura.get('valor', 0))
@@ -1239,7 +1384,7 @@ class MainWindow(QMainWindow):
                     valor_item = QTableWidgetItem(valor_formateado)
                     valor_item.setData(Qt.ItemDataRole.UserRole + 1, valor)  # Store raw value for editing
                     valor_item.setFlags(valor_item.flags() | Qt.ItemFlag.ItemIsEditable)
-                    self.tabla_filtrada.setItem(i, 3, valor_item)
+                    tabla_destino.setItem(i, 3, valor_item)
                     
                 except Exception as e:
                     logger.error(f"Error al mostrar factura {i}: {str(e)}", exc_info=True)
@@ -1258,30 +1403,30 @@ class MainWindow(QMainWindow):
             # Celda vacía
             empty_item = QTableWidgetItem("")
             empty_item.setFlags(empty_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.tabla_filtrada.setItem(total_row, 0, empty_item)
+            tabla_destino.setItem(total_row, 0, empty_item)
             
             # Celda vacía
             empty_item2 = QTableWidgetItem("")
             empty_item2.setFlags(empty_item2.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.tabla_filtrada.setItem(total_row, 1, empty_item2)
+            tabla_destino.setItem(total_row, 1, empty_item2)
             
-            # Celda de TOTAL
+            # Celda de TOTAL:
             total_label = QTableWidgetItem("TOTAL:")
             total_label.setFlags(total_label.flags() & ~Qt.ItemFlag.ItemIsEditable)
             font = total_label.font()
             font.setBold(True)
             total_label.setFont(font)
-            self.tabla_filtrada.setItem(total_row, 2, total_label)
+            tabla_destino.setItem(total_row, 2, total_label)
             
             # Celda de valor total
             total_value = QTableWidgetItem(f"${total:,.0f} COP".replace(',', '.'))
             total_value.setFlags(total_value.flags() & ~Qt.ItemFlag.ItemIsEditable)
             total_value.setFont(font)
-            self.tabla_filtrada.setItem(total_row, 3, total_value)
+            tabla_destino.setItem(total_row, 3, total_value)
             
             # Resaltar la fila de total
-            for col in range(self.tabla_filtrada.columnCount()):
-                item = self.tabla_filtrada.item(total_row, col)
+            for col in range(tabla_destino.columnCount()):
+                item = tabla_destino.item(total_row, col)
                 if item:
                     if self.tema_oscuro:
                         item.setBackground(QColor(100, 100, 100))  # Gris oscuro para el tema oscuro
@@ -1296,10 +1441,10 @@ class MainWindow(QMainWindow):
         finally:
             # Reconectar la señal al final, solo si no está ya conectada
             try:
-                self.tabla_filtrada.itemChanged.disconnect()
+                tabla_destino.itemChanged.disconnect()
             except:
                 pass
-            self.tabla_filtrada.itemChanged.connect(self.guardar_cambios_celda)
+            tabla_destino.itemChanged.connect(self.guardar_cambios_celda)
 
     def _mostrar_vista_previa(self, facturas, tipo_archivo):
         """Mostrar una vista previa de las facturas a importar"""
@@ -2654,64 +2799,89 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'btn_eliminar'):
                 self.btn_eliminar.setEnabled(False)
     
-    def actualizar_otra_tabla(self, factura_id, campo, nuevo_valor, es_tabla_filtrada):
+    def actualizar_otra_tabla(self, factura_id, campo, nuevo_valor, es_tabla_filtro):
         """
-        Actualiza el valor en la otra tabla cuando se realiza un cambio en una de ellas
+        Actualiza el valor en las otras tablas cuando se realiza un cambio en una de ellas
         
         Args:
             factura_id: ID de la factura que se está actualizando
             campo: Nombre del campo que se modificó
             nuevo_valor: Nuevo valor del campo
-            es_tabla_filtrada: Booleano que indica si el cambio vino de la tabla filtrada
+            es_tabla_filtro: Booleano que indica si el cambio vino de una tabla de filtro
         """
         try:
-            # Determinar qué tabla actualizar (la que no generó el cambio)
-            tabla_destino = self.tabla_filtrada if not es_tabla_filtrada else self.tabla_facturas
-            
-            # Mapear campos a columnas según la tabla de destino
-            # La tabla principal tiene columnas: [ID, Fecha, Tipo, Descripción, Valor]
-            # La tabla filtrada tiene columnas: [Fecha, Tipo, Descripción, Valor]
-            if es_tabla_filtrada:
-                # Si el destino es la tabla filtrada (origen: tabla principal)
-                mapeo_campos = {
-                    'fecha': 0,   # Columna 0 en tabla filtrada
-                    'tipo': 1,    # Columna 1 en tabla filtrada
-                    'descripcion': 2,  # Columna 2 en tabla filtrada
-                    'valor': 3     # Columna 3 en tabla filtrada
-                }
+            # Determinar qué tablas actualizar (todas excepto la que generó el cambio)
+            if es_tabla_filtro:
+                # Si el cambio vino de una tabla de filtro, actualizar la tabla principal
+                # y la otra tabla de filtro
+                tablas_actualizar = [self.tabla_facturas]
+                if hasattr(self, 'tabla_filtro_rango') and hasattr(self, 'tabla_filtro_fechas'):
+                    # Determinar cuál es la tabla de filtro actual
+                    if hasattr(self, 'tab_widget_filtros') and self.tab_widget_filtros.currentIndex() == 0:  # Pestaña de rango
+                        tablas_actualizar.append(self.tabla_filtro_fechas)
+                    else:  # Pestaña de fechas
+                        tablas_actualizar.append(self.tabla_filtro_rango)
             else:
-                # Si el destino es la tabla principal (origen: tabla filtrada)
-                mapeo_campos = {
-                    'fecha': 1,   # Columna 1 en tabla principal (0 es ID)
-                    'tipo': 2,    # Columna 2 en tabla principal
-                    'descripcion': 3,  # Columna 3 en tabla principal
-                    'valor': 4     # Columna 4 en tabla principal
-                }
+                # Si el cambio vino de la tabla principal, actualizar ambas tablas de filtro
+                tablas_actualizar = []
+                if hasattr(self, 'tabla_filtro_rango'):
+                    tablas_actualizar.append(self.tabla_filtro_rango)
+                if hasattr(self, 'tabla_filtro_fechas'):
+                    tablas_actualizar.append(self.tabla_filtro_fechas)
             
-            # Obtener el índice de la columna
-            columna = mapeo_campos.get(campo)
-            if columna is None:
-                return
+            # Mapear campos a columnas para cada tipo de tabla
+            mapeo_campos_principal = {
+                'fecha': 1,   # Columna 1 en tabla principal (0 es ID)
+                'tipo': 2,    # Columna 2 en tabla principal
+                'descripcion': 3,  # Columna 3 en tabla principal
+                'valor': 4     # Columna 4 en tabla principal
+            }
+            
+            mapeo_campos_filtro = {
+                'fecha': 0,   # Columna 0 en tabla filtrada
+                'tipo': 1,    # Columna 1 en tabla filtrada
+                'descripcion': 2,  # Columna 2 en tabla filtrada
+                'valor': 3     # Columna 3 en tabla filtrada
+            }
+            
+            # Actualizar cada tabla de destino
+            for tabla_destino in tablas_actualizar:
+                # Determinar qué mapeo de campos usar
+                if tabla_destino == self.tabla_facturas:
+                    mapeo_campos = mapeo_campos_principal
+                    es_tabla_principal = True
+                else:
+                    mapeo_campos = mapeo_campos_filtro
+                    es_tabla_principal = False
                 
-            # Buscar la fila que contiene la factura en la tabla de destino
-            for fila in range(tabla_destino.rowCount()):
-                # Obtener el ID de la factura de la fila actual
-                item_id = tabla_destino.item(fila, 0)
-                if not item_id:
+                # Obtener el índice de la columna
+                columna = mapeo_campos.get(campo)
+                if columna is None:
                     continue
                     
-                # Obtener el ID de la factura, ya sea de UserRole o del texto
-                if es_tabla_filtrada:
-                    # Para la tabla filtrada, el ID está en UserRole
-                    current_id = item_id.data(Qt.ItemDataRole.UserRole)
-                else:
-                    # Para la tabla principal, el ID está en el texto de la columna 0
-                    current_id = int(item_id.text()) if item_id.text().isdigit() else None
+                # Buscar la fila que contiene la factura en la tabla de destino
+                for fila in range(tabla_destino.rowCount()):
+                    # Obtener el ID de la factura de la fila actual
+                    item_id = tabla_destino.item(fila, 0 if not es_tabla_principal else 0)
+                    if not item_id:
+                        continue
+                        
+                    # Obtener el ID de la factura, ya sea de UserRole o del texto
+                    if not es_tabla_principal:
+                        # Para tablas de filtro, el ID está en UserRole
+                        current_id = item_id.data(Qt.ItemDataRole.UserRole)
+                    else:
+                        # Para la tabla principal, el ID está en el texto de la columna 0
+                        current_id = int(item_id.text()) if item_id.text().isdigit() else None
                 
-                if current_id == factura_id:
-                    # Actualizar la celda correspondiente
-                    item = tabla_destino.item(fila, columna)
-                    if item:
+                    if current_id == factura_id:
+                        # Actualizar la celda correspondiente
+                        item = tabla_destino.item(fila, columna)
+                        if not item:
+                            # Si no existe el ítem, crearlo
+                            item = QTableWidgetItem()
+                            tabla_destino.setItem(fila, columna, item)
+                        
                         # Bloquear señales temporalmente para evitar bucles
                         tabla_destino.blockSignals(True)
                         try:
@@ -2751,15 +2921,22 @@ class MainWindow(QMainWindow):
             
             # Determinar qué tabla generó el evento
             tabla = self.sender()
-            if tabla not in [self.tabla_facturas, self.tabla_filtrada]:
+            
+            # Verificar si la tabla es una de las tablas de filtros
+            es_tabla_filtro_rango = (tabla == self.tabla_filtro_rango)
+            es_tabla_filtro_fechas = (tabla == self.tabla_filtro_fechas)
+            
+            # Si no es ninguna de las tablas esperadas, salir
+            if tabla not in [self.tabla_facturas, self.tabla_filtro_rango, self.tabla_filtro_fechas]:
                 return
                 
-            es_tabla_filtrada = (tabla == self.tabla_filtrada)
+            # Determinar si es una tabla de filtro (cualquiera de las dos)
+            es_tabla_filtro = es_tabla_filtro_rango or es_tabla_filtro_fechas
             
             # Mapeo de columnas a campos de factura según la tabla
-            # (es_tabla_filtrada, column_index): 'field_name'
+            # (es_tabla_filtro, column_index): 'field_name'
             column_mapping = {
-                # Tabla filtrada (sin columna ID)
+                # Tabla de filtro (sin columna ID)
                 (True, 0): 'fecha',      # Columna 0: Fecha
                 (True, 1): 'tipo',       # Columna 1: Tipo
                 (True, 2): 'descripcion', # Columna 2: Descripción
@@ -2773,7 +2950,7 @@ class MainWindow(QMainWindow):
             }
             
             # Obtener el campo que se está editando
-            campo = column_mapping.get((es_tabla_filtrada, item.column()))
+            campo = column_mapping.get((es_tabla_filtro, item.column()))
             if not campo or campo == 'id':  # No permitir editar el ID
                 return
                 
@@ -2799,18 +2976,39 @@ class MainWindow(QMainWindow):
                     
             elif campo == 'valor':
                 try:
-                    # Extraer solo los números y el punto decimal
-                    valor_limpio = ''.join(c for c in nuevo_valor if c.isdigit() or c in '.,')
-                    # Reemplazar comas por puntos para el float
-                    valor_limpio = valor_limpio.replace(',', '.')
-                    valor_numerico = float(valor_limpio)
-                    if valor_numerico <= 0:
-                        raise ValueError("El valor debe ser mayor a cero")
+                    # Obtener el texto actual del ítem
+                    texto_actual = item.text().strip()
                     
-                    # Formatear el valor para mostrarlo en la tabla
-                    valor_formateado = f"${valor_numerico:,.0f} COP".replace(',', '.')
+                    # Si el usuario está borrando el valor, establecerlo a 0
+                    if not texto_actual:
+                        item.setText("$0 COP")
+                        nuevo_valor = "0"
+                        return
+                    
+                    # Obtener solo los dígitos del valor actual
+                    solo_digitos = ''.join(c for c in texto_actual if c.isdigit())
+                    
+                    # Si el usuario está editando, usar el valor exacto que está escribiendo
+                    if nuevo_valor != texto_actual:
+                        # Si el usuario está agregando o quitando dígitos, actualizar el valor
+                        if len(nuevo_valor) != len(texto_actual) or not any(c.isdigit() for c in nuevo_valor):
+                            solo_digitos = ''.join(c for c in nuevo_valor if c.isdigit())
+                    
+                    # Si no hay dígitos, establecer a 0
+                    if not solo_digitos:
+                        item.setText("$0 COP")
+                        nuevo_valor = "0"
+                        return
+                    
+                    # Convertir a entero
+                    valor_entero = int(solo_digitos)
+                    
+                    # Formatear el valor con separadores de miles
+                    valor_formateado = f"${valor_entero:,} COP".replace(",", ".")
+                    
+                    # Actualizar el ítem con el valor formateado
                     item.setText(valor_formateado)
-                    nuevo_valor = str(valor_numerico)  # Guardar como string numérico
+                    nuevo_valor = str(valor_entero)
                 except (ValueError, TypeError) as e:
                     QMessageBox.warning(self, "Valor inválido", 
                                      f"El valor debe ser un número mayor a cero: {str(e)}")
@@ -2819,8 +3017,7 @@ class MainWindow(QMainWindow):
             
             # Obtener el ID de la factura usando el método _obtener_id_factura
             fila = item.row()
-            es_tabla_filtrada = (tabla == self.tabla_filtrada) if hasattr(self, 'tabla_filtrada') else False
-            factura_id = self._obtener_id_factura(tabla, fila, es_tabla_filtrada)
+            factura_id = self._obtener_id_factura(tabla, fila, es_tabla_filtro)
             
             if factura_id is None:
                 logger.error("No se pudo obtener el ID de la factura")
@@ -2859,7 +3056,7 @@ class MainWindow(QMainWindow):
                     valor=float(factura.get('valor', 0))
                 ):
                     # Actualizar la otra tabla si es necesario
-                    self.actualizar_otra_tabla(factura_id, campo, nuevo_valor, es_tabla_filtrada)
+                    self.actualizar_otra_tabla(factura_id, campo, nuevo_valor, es_tabla_filtro)
                     
                     # Actualizar la lista de facturas para reflejar los cambios
                     self.actualizar_lista_facturas()
@@ -2872,10 +3069,14 @@ class MainWindow(QMainWindow):
                     
                     # Forzar actualización visual de las tablas
                     tabla.viewport().update()
-                    if es_tabla_filtrada:
+                    if es_tabla_filtro:
+                        # Si estamos en una tabla de filtro, actualizar la tabla principal
                         self.tabla_facturas.viewport().update()
-                    else:
-                        self.tabla_filtrada.viewport().update()
+                        # Y actualizar la otra tabla de filtro
+                        if es_tabla_filtro_rango:
+                            self.tabla_filtro_fechas.viewport().update()
+                        else:
+                            self.tabla_filtro_rango.viewport().update()
                 else:
                     raise Exception("No se pudo actualizar la base de datos")
                     
@@ -2931,12 +3132,43 @@ class MainWindow(QMainWindow):
             float: El valor numérico procesado
         """
         try:
+            # Si el valor está vacío, devolver 0
+            if not nuevo_valor:
+                return 0.0
+                
+            # Si el valor ya es un número, devolverlo directamente
+            if isinstance(nuevo_valor, (int, float)):
+                return float(nuevo_valor)
+                
             # Limpiar el valor numérico
-            valor_limpio = str(nuevo_valor).replace('$', '').replace('COP', '').replace('.', '').replace(' ', '').replace(',', '.')
-            valor_numerico = round(float(valor_limpio), 2)
+            valor_limpio = str(nuevo_valor).strip()
+            
+            # Eliminar símbolos de moneda y espacios
+            valor_limpio = valor_limpio.replace('$', '').replace('COP', '').replace(' ', '').replace('.', '')
+            
+            # Reemplazar coma por punto para el decimal
+            valor_limpio = valor_limpio.replace(',', '.')
+            
+            # Si no hay ningún dígito, devolver 0
+            if not any(c.isdigit() for c in valor_limpio):
+                return 0.0
+                
+            # Convertir a float
+            try:
+                valor_numerico = float(valor_limpio)
+            except ValueError:
+                # Si falla, intentar extraer solo los dígitos
+                digitos = ''.join(c for c in valor_limpio if c.isdigit() or c == '.')
+                valor_numerico = float(digitos) if digitos else 0.0
+            
+            # Redondear a 2 decimales
+            valor_numerico = round(valor_numerico, 2)
+            
             if valor_numerico < 0:
                 raise ValueError("El valor no puede ser negativo")
+                
             return valor_numerico
+            
         except (ValueError, TypeError) as e:
             # Si hay un error, devolver el valor anterior de la factura
             return float(factura.get('valor', 0))
@@ -2952,8 +3184,15 @@ class MainWindow(QMainWindow):
             str: Valor formateado como moneda colombiana
         """
         try:
+            # Asegurarse de que el valor sea un número
             valor_float = float(valor)
-            return f"${valor_float:,.0f} COP".replace(",", "X").replace(".", ",").replace("X", ".")
+            
+            # Formatear el número sin decimales y con separador de miles
+            valor_entero = int(round(valor_float))
+            valor_str = f"{valor_entero:,}".replace(",", ".")
+            
+            return f"${valor_str} COP"
+                
         except (ValueError, TypeError):
             return "$0 COP"
 
