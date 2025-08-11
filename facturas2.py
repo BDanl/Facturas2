@@ -332,6 +332,30 @@ class MainWindow(QMainWindow):
         title.setFont(title_font)
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
+        # Botón para respaldo de base de datos
+        self.btn_backup = QPushButton(" 📂 Respaldo")
+        self.btn_backup.setToolTip("Haz clic para crear una copia de respaldo de la base de datos")
+        self.btn_backup.setFixedSize(120, 30)
+        self.btn_backup.setStyleSheet("""
+            QPushButton {
+                background-color: #17a2b8;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 2px 8px;
+                font-size: 11px;
+                text-align: left;
+                padding-left: 5px;
+            }
+            QPushButton:hover {
+                background-color: #138496;
+            }
+            QPushButton:pressed {
+                background-color: #117a8b;
+            }
+        """)
+        self.btn_backup.clicked.connect(self.crear_respaldo)
+        
         # Botón para alternar modo oscuro/claro
         self.btn_tema = QPushButton(" Tema")
         self.btn_tema.setToolTip("Haz clic para cambiar entre modo claro y oscuro")
@@ -339,8 +363,8 @@ class MainWindow(QMainWindow):
         # Usar emoji como ícono inicial
         self.btn_tema.setIcon(QIcon.fromTheme("weather-clear"))  # Intenta con el tema primero
         if self.btn_tema.icon().isNull():
-            # Si no hay tema, creamos un ícono con texto
-            self.btn_tema.setText("🌞 Tema")  # Texto de respaldo
+            # Si no hay tema, usamos un emoji como respaldo
+            self.btn_tema.setText("🌓 Tema")
             self.btn_tema.setIcon(QIcon())  # Ícono vacío para forzar el texto
         self.btn_tema.setStyleSheet("""
             QPushButton {
@@ -366,6 +390,8 @@ class MainWindow(QMainWindow):
         toolbar.addStretch()
         toolbar.addWidget(title)
         toolbar.addStretch()
+        toolbar.addWidget(self.btn_backup)
+        toolbar.addSpacing(5)  # Espacio entre botones
         toolbar.addWidget(self.btn_tema)
         
         # Agregar barra de herramientas al layout principal
@@ -3916,6 +3942,92 @@ class MainWindow(QMainWindow):
             error_msg = f"Error al importar desde JSON: {str(e)}"
             logger.error(error_msg, exc_info=True)
             QMessageBox.critical(self, "Error", error_msg)
+    
+    def cargar_ultima_ruta_respaldo(self):
+        """Carga la última ruta de respaldo utilizada desde la configuración"""
+        config_path = self.data_dir / "config.json"
+        if config_path.exists():
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    return config.get('ultima_ruta_respaldo', str(Path.home()))
+            except Exception as e:
+                logging.error(f"Error al cargar la configuración: {str(e)}")
+        return str(Path.home())
+    
+    def guardar_ultima_ruta_respaldo(self, ruta):
+        """Guarda la última ruta de respaldo utilizada en la configuración"""
+        config_path = self.data_dir / "config.json"
+        config = {}
+        
+        # Cargar configuración existente si existe
+        if config_path.exists():
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+            except Exception as e:
+                logging.error(f"Error al cargar la configuración: {str(e)}")
+        
+        # Actualizar la ruta de respaldo
+        config['ultima_ruta_respaldo'] = os.path.dirname(ruta) if os.path.isfile(ruta) else ruta
+        
+        # Guardar la configuración
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=4)
+        except Exception as e:
+            logging.error(f"Error al guardar la configuración: {str(e)}")
+    
+    def crear_respaldo(self):
+        """Crea una copia de respaldo de la base de datos"""
+        try:
+            # Obtener la ruta de la base de datos
+            db_path = DATA_DIR / "facturas.db"
+            if not db_path.exists():
+                QMessageBox.warning(self, "Respaldo", "No se encontró la base de datos para respaldar.")
+                return
+            
+            # Obtener la fecha y hora actual para el nombre del archivo
+            fecha_hora = datetime.now().strftime("%Y%m%d_%H%M%S")
+            nombre_archivo = f"facturas_backup_{fecha_hora}.db"
+            
+            # Obtener la última ruta de respaldo o usar el directorio de inicio
+            ultima_ruta = self.cargar_ultima_ruta_respaldo()
+            ruta_sugerida = str(Path(ultima_ruta) / nombre_archivo)
+            
+            # Abrir diálogo para seleccionar ubicación del respaldo
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Guardar copia de respaldo",
+                ruta_sugerida,
+                "Archivos de base de datos (*.db);;Todos los archivos (*)",
+                options=QFileDialog.Option.DontUseNativeDialog
+            )
+            
+            if file_path:
+                # Asegurarse de que la extensión sea .db
+                if not file_path.lower().endswith('.db'):
+                    file_path += '.db'
+                
+                # Copiar el archivo de la base de datos
+                import shutil
+                shutil.copy2(db_path, file_path)
+                
+                # Guardar la ruta utilizada
+                self.guardar_ultima_ruta_respaldo(file_path)
+                
+                QMessageBox.information(
+                    self, 
+                    "Respaldo exitoso", 
+                    f"Se ha creado una copia de respaldo en:\n{file_path}"
+                )
+                
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error al crear respaldo",
+                f"Ocurrió un error al crear el respaldo:\n{str(e)}"
+            )
     
     def cargar_preferencia_tema(self):
         """Cargar la preferencia de tema desde el archivo de configuración"""
