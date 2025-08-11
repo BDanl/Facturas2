@@ -274,6 +274,7 @@ class MainWindow(QMainWindow):
         # Inicializar atributos
         self.facturas = []
         self.tipos_gasto = []
+        self.ultimo_tipo_gasto_seleccionado = None  # Almacenará el último tipo de gasto seleccionado
         
         # Cargar datos sin actualizar la UI aún
         self.cargar_datos(actualizar_ui=False)
@@ -429,6 +430,10 @@ class MainWindow(QMainWindow):
         
         # Tipo de gasto
         self.cmb_tipo_gasto = QComboBox()
+        
+        # Conectar la señal de cambio de selección del combo ANTES de establecer cualquier valor
+        self.cmb_tipo_gasto.currentTextChanged.connect(self.actualizar_ultimo_tipo_gasto)
+        
         # Cargar tipos de gasto desde la base de datos
         try:
             tipos_gasto = self.db.obtener_tipos_gasto()
@@ -439,6 +444,14 @@ class MainWindow(QMainWindow):
             logging.error(f"Error al cargar tipos de gasto: {str(e)}")
             self.cmb_tipo_gasto.addItems(["Mercado", "Transporte", "Compra tienda", 
                                         "Farmacia", "Varios", "Gastos urgentes"])
+        
+        # Establecer el último tipo seleccionado si existe, de lo contrario usar el primero
+        if hasattr(self, 'ultimo_tipo_gasto_seleccionado') and self.ultimo_tipo_gasto_seleccionado:
+            index = self.cmb_tipo_gasto.findText(self.ultimo_tipo_gasto_seleccionado)
+            if index >= 0:
+                self.cmb_tipo_gasto.setCurrentIndex(index)
+        else:
+            self.ultimo_tipo_gasto_seleccionado = self.cmb_tipo_gasto.itemText(0)
         
         # Descripción
         self.txt_descripcion = QLineEdit()
@@ -468,6 +481,8 @@ class MainWindow(QMainWindow):
         # Conectar la tecla Enter para guardar
         self.txt_descripcion.returnPressed.connect(self.intentar_guardar_desde_teclado)
         self.txt_valor.returnPressed.connect(self.intentar_guardar_desde_teclado)
+        
+        # La señal ya está conectada al inicio para asegurar que se capturen todos los cambios
         
         # Instalar event filter en los campos de entrada
         self.txt_descripcion.installEventFilter(self)
@@ -1051,12 +1066,25 @@ class MainWindow(QMainWindow):
             
         return True
     
+    def actualizar_ultimo_tipo_gasto(self, texto):
+        """Actualiza el último tipo de gasto seleccionado"""
+        if texto:  # Solo actualizar si hay un texto válido
+            self.ultimo_tipo_gasto_seleccionado = texto
+    
     def limpiar_campos(self):
         """Limpiar los campos del formulario"""
         self.txt_descripcion.clear()
         self.txt_valor.clear()
         self.date_fecha.setDate(QDate.currentDate())
-        self.cmb_tipo_gasto.setCurrentIndex(0)
+        
+        # Mantener la selección actual del tipo de gasto si existe
+        if hasattr(self, 'ultimo_tipo_gasto_seleccionado') and self.ultimo_tipo_gasto_seleccionado:
+            index = self.cmb_tipo_gasto.findText(self.ultimo_tipo_gasto_seleccionado)
+            if index >= 0:
+                self.cmb_tipo_gasto.setCurrentIndex(index)
+        else:
+            # Si no hay selección previa, usar el primer elemento
+            self.cmb_tipo_gasto.setCurrentIndex(0)
     
     def actualizar_lista_facturas(self):
         """Actualizar la tabla de facturas"""
